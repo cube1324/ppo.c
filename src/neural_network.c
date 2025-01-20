@@ -1,0 +1,114 @@
+
+#include "neural_network.h"
+
+NeuralNetwork* create_neural_network(int* layer_sizes, ActivationFunction* activation_functions, int num_layers) {
+    NeuralNetwork* nn = (NeuralNetwork*)malloc(sizeof(NeuralNetwork));
+    nn->num_layers = num_layers;
+    nn->layers = (Layer*)malloc((num_layers - 1) * sizeof(Layer));
+
+    for (int i = 0; i < num_layers - 1; i++) {
+        nn->layers[i].input_size = layer_sizes[i];
+        nn->layers[i].output_size = layer_sizes[i + 1];
+        nn->layers[i].weights = (float*)malloc(layer_sizes[i] * layer_sizes[i + 1] * sizeof(float));
+        nn->layers[i].biases = (float*)malloc(layer_sizes[i + 1] * sizeof(float));
+        nn->layers[i].grad_weights = (float*)calloc(layer_sizes[i] * layer_sizes[i + 1], sizeof(float));
+        nn->layers[i].grad_biases = (float*)calloc(layer_sizes[i + 1], sizeof(float));
+        nn->layers[i].activation_function = &activation_functions[i];
+        // nn->layers[i].output = (float*)malloc(layer_sizes[i + 1] * sizeof(float));
+
+        // Initialize weights and biases (for simplicity, using random values)
+        for (int j = 0; j < layer_sizes[i] * layer_sizes[i + 1]; j++) {
+            nn->layers[i].weights[j] = (float)rand() / RAND_MAX;
+        }
+        for (int j = 0; j < layer_sizes[i + 1]; j++) {
+            nn->layers[i].biases[j] = (float)rand() / RAND_MAX;
+        }
+    }
+
+    nn->output_size = nn->layers[num_layers - 2].output_size;
+
+    return nn;
+}
+
+void forward_propagation(NeuralNetwork* nn, float* input, int m) {
+    // float* temp_output = (float*)malloc(nn->layers[0].output_size * sizeof(float));
+    nn->layers[0].input = input;
+
+    int last_idx = nn->num_layers - 2;
+
+    for (int i = 0; i < last_idx; i++) {
+        free(nn->layers[i + 1].input);
+        nn->layers[i + 1].input = calloc(m * nn->layers[i + 1].input_size, sizeof(float));
+
+        mat_mul(nn->layers[i + 1].input, nn->layers[i].input, nn->layers[i].weights, nn->layers[i].biases, m, nn->layers[i].input_size, nn->layers[i].output_size);
+
+        if (nn->layers[i].activation_function->activation != NULL){
+            nn->layers[i].activation_function->activation(nn->layers[i + 1].input, m, nn->layers[i + 1].input_size);
+        }
+    }
+    free(nn->output);
+    nn->output = calloc(m * nn->output_size, sizeof(float));
+
+    mat_mul(nn->output, nn->layers[last_idx].input, nn->layers[last_idx].weights, nn->layers[last_idx].biases, m, nn->layers[last_idx].input_size, nn->output_size);
+
+    if (nn->layers[last_idx].activation_function->activation != NULL){
+        nn->layers[last_idx].activation_function->activation(nn->output, m, nn->output_size);
+    }
+}
+
+void backward_propagation(NeuralNetwork* nn, LossFunction* lossf, float* y_true, int m) {
+    // out = activation(x * w + b)
+    
+
+    float loss = lossf->loss(nn->output, y_true, m, nn->output_size);
+    printf("Loss: %f\n", loss);
+
+    float* layer_grad = calloc(m * nn->output_size, sizeof(float));
+
+    lossf->loss_derivative(layer_grad, nn->output, y_true, m, nn->output_size);
+
+    if (nn->layers[nn->num_layers - 2].activation_function->activation_derivative != NULL) {
+        nn->layers[nn->num_layers - 2].activation_function->activation_derivative(nn->output, layer_grad, m, nn->output_size);
+    }
+
+    for (int i = nn->num_layers - 2; i >= 0; i--) {
+        float* temp_grad_x = NULL;
+
+        if (i > 0){
+            temp_grad_x = calloc(m * nn->layers[i - 1].output_size, sizeof(float));
+        }
+
+        // Sum over m for derivative with respect to b
+        for (int i = 0; i < nn->layers[i].output_size; i++){
+            for (int j = 0; j < m; j++){
+                nn->layers[i].grad_biases[i] += layer_grad[j * nn->layers[i].output_size + i];
+            }
+        }
+
+
+        // Compute derivative for x and w
+        mat_mul_backwards(temp_grad_x, nn->layers[i].grad_weights, layer_grad, nn->layers[i].input, nn->layers[i].weights, m, nn->layers[i].input_size, nn->layers[i].output_size);
+        // x * w.T + b
+
+        free(layer_grad);
+        layer_grad = temp_grad_x;
+
+        // Apply 
+        if (i > 0 && nn->layers[i].activation_function->activation_derivative != NULL) {
+            nn->layers[i - 1].activation_function->activation_derivative(nn->layers[i].input, layer_grad, m, nn->layers[i].input_size);
+        }
+    }
+}
+
+void free_neural_network(NeuralNetwork* nn) {
+    for (int i = 0; i < nn->num_layers - 1; i++) {
+        free(nn->layers[i].weights);
+        free(nn->layers[i].biases);
+        free(nn->layers[i].grad_weights);
+        free(nn->layers[i].grad_biases);
+        free(nn->layers[i].input);
+    }
+    free(nn->layers);
+    free(nn->output);
+    free(nn);
+}
