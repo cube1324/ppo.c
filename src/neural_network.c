@@ -72,17 +72,18 @@ void backward_propagation(NeuralNetwork* nn, LossFunction* lossf, float* y_true,
     }
 
     for (int i = nn->num_layers - 2; i >= 0; i--) {
-        float* temp_grad_x = NULL;
 
-        if (i > 0){
-            temp_grad_x = calloc(m * nn->layers[i - 1].output_size, sizeof(float));
-        }
+        float* temp_grad_x = calloc(m * nn->layers[i].input_size, sizeof(float));
+
+        memset(nn->layers[i].grad_weights, 0.0, nn->layers[i].input_size * nn->layers[i].output_size * sizeof(float));
+        memset(nn->layers[i].grad_biases, 0.0, nn->layers[i].output_size * sizeof(float));
 
         // Sum over m for derivative with respect to b
-        for (int i = 0; i < nn->layers[i].output_size; i++){
-            for (int j = 0; j < m; j++){
-                nn->layers[i].grad_biases[i] += layer_grad[j * nn->layers[i].output_size + i];
+        for (int j = 0; j < nn->layers[i].output_size; j++){
+            for (int k = 0; k < m; k++){
+                nn->layers[i].grad_biases[j] += layer_grad[k * nn->layers[i].output_size + j];
             }
+            nn->layers[i].grad_biases[j] /= m;
         }
 
 

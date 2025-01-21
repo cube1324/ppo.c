@@ -46,8 +46,8 @@ int main() {
     int m = 4;
 
 
-    int layer_sizes[] = {input_size, 32, 32, output_size};
-    int num_layers = 4;
+    int layer_sizes[] = {input_size, 4, output_size};
+    int num_layers = 3;
     float* input = malloc(m * input_size * sizeof(float));
 
     float temp_input[] = {0.0, 0.0,
@@ -59,7 +59,7 @@ int main() {
 
     float y_true[] = {0.0, 1.0, 1.0, 0.0};
 
-    ActivationFunction activation_functions[] = {{&ReLU, &ReLU_derivative}, {&ReLU, &ReLU_derivative}, {NULL, NULL}};
+    ActivationFunction activation_functions[] = {{&ReLU, &ReLU_derivative}, {NULL, NULL}};
 
     NeuralNetwork* nn = create_neural_network(layer_sizes, activation_functions, num_layers);
 
@@ -67,26 +67,67 @@ int main() {
     lossf->loss = &mean_squared_error;
     lossf->loss_derivative = &mean_squared_error_derivative;
 
+    // forward_propagation(nn, input, m);
 
-    for (int i = 0; i < 50; i++){
+    // printf("Out %f %f %f %f | ", nn->output[0],  nn->output[1],  nn->output[2],  nn->output[3]);
+
+    // backward_propagation(nn, lossf, y_true, m);
+
+    // for (int j = 0; j < 2; j++){
+    //     printf("%d\n", j);
+    //     for (int i = 0; i < nn->layers[j].input_size * nn->layers[j].output_size; i++){
+    //         printf("%f  |  %f \n", nn->layers[j].weights[i], nn->layers[j].grad_weights[i]);
+    //     }
+    //     printf("------\n");
+    //     for (int i = 0; i < nn->layers[j].output_size; i++){
+    //         printf("%f  |  %f \n", nn->layers[j].biases[i], nn->layers[j].grad_biases[i]);
+    //     }
+    // }
+
+    // float delta = 0.005;
+
+    // for (int j = 0; j < 2; j++){
+    //     for (int i = 0; i < nn->layers[j].input_size * nn->layers[j].output_size; i++){
+    //         nn->layers[j].weights[i] += delta;
+    //         forward_propagation(nn, input, m);
+    //         float loss1 = lossf->loss(nn->output, y_true, m, nn->output_size);
+
+    //         nn->layers[j].weights[i] -= 2 * delta;
+    //         forward_propagation(nn, input, m);
+    //         float loss2 = lossf->loss(nn->output, y_true, m, nn->output_size);
+
+    //         nn->layers[j].weights[i] += delta;
+
+    //         printf("%f %f | %f  |  %f \n", loss1, loss2, (loss1 - loss2) / (2 * delta), nn->layers[j].grad_weights[i]);
+    //     }
+    //     printf("------\n");
+    // }
+
+
+
+    for (int i = 0; i < 2000; i++){
         forward_propagation(nn, input, m);
+
+        printf("Out %f %f %f %f |  ", nn->output[0],  nn->output[1],  nn->output[2],  nn->output[3]);
 
         backward_propagation(nn, lossf, y_true, m);
 
         for (int j = 0; j < nn->num_layers - 1; j++) {
             for (int k = 0; k < nn->layers[j].input_size * nn->layers[j].output_size; k++){
-                nn->layers[j].weights[k] -= 0.00001 * nn->layers->grad_weights[k];
+                nn->layers[j].weights[k] -= 0.01 * nn->layers->grad_weights[k];
+                // printf("%f ", nn->layers->grad_weights[k]);
             }
 
             for (int k = 0; k < nn->layers[j].output_size; k++){
-                nn->layers[j].biases[k] -= 0.00001 * nn->layers->grad_biases[k];
+                nn->layers[j].biases[k] -= 0.01 * nn->layers->grad_biases[k];
             }
         }
+        // printf("\n ------------------- \n");
     }
     
 
     // Print the output
-    printf("Output: [%f %f]\n", nn->output[2], nn->output[3]);
+    printf("Output: [%f]\n", nn->output[0]);
 
     // Free allocated memory
     free_neural_network(nn);

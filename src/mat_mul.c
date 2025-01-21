@@ -22,13 +22,11 @@ void mat_mul(float* out, float* x, float* weight, float* bias, int m, int n, int
 
 void mat_mul_backwards(float* grad_x, float* grad_weight, float* grad_in, float* x, float* weight, int m, int n, int l) {
     // grad_x = m x n
-    if (grad_x != NULL) {
-        for (int i = 0; i < m; i++){
-            for (int j = 0; j < n; j++){
-                // compute output for gradx[i * n + j]
-                for (int k = 0; k < l; k++){
-                    grad_x[i * n + j] += grad_in[ i * l + k] * weight[k * n + j];
-                }
+    for (int i = 0; i < m; i++){
+        for (int j = 0; j < n; j++){
+            // compute output for gradx[i * n + j]
+            for (int k = 0; k < l; k++){
+                grad_x[i * n + j] += grad_in[ i * l + k] * weight[k * n + j];
             }
         }
     }
@@ -40,8 +38,9 @@ void mat_mul_backwards(float* grad_x, float* grad_weight, float* grad_in, float*
         for (int j = 0; j < n; j++){
             // Compute output for grad_weight[i * n + j]
             for (int k = 0; k < m; k++){
-                grad_weight[i * n + j] += grad_in[i * m + k] * x[k * n + j];
+                grad_weight[i * n + j] += grad_in[k * l + i] * x[k * n + j];
             }
+            grad_weight[i * n + j] /= m;
         }
     }
 }
