@@ -1,9 +1,12 @@
 #include <stdio.h>
 #include <math.h>
+#include <string.h>
+#include <time.h>
+
 #include "mat_mul.h"
 #include "neural_network.h"
-#include <string.h>
-
+#include "policy.h"
+#include "gym_env.h"
 
 float mean_squared_error(float* y, float* y_true, int m, int n) {
     float loss = 0.0;
@@ -38,9 +41,7 @@ void ReLU_derivative(float* x, float* grad, int m,  int n) {
     }
 }
 
-
-int main() {
-    // Example usage
+void test_nn(){
     int input_size = 2;
     int output_size = 1;
     int m = 4;
@@ -60,7 +61,6 @@ int main() {
     float y_true[] = {0.0, 1.0, 1.0, 0.0};
 
     ActivationFunction activation_functions[] = {{&ReLU, &ReLU_derivative}, {NULL, NULL}};
-
     NeuralNetwork* nn = create_neural_network(layer_sizes, activation_functions, num_layers);
 
     LossFunction* lossf = (LossFunction*)malloc(sizeof(LossFunction));
@@ -71,7 +71,7 @@ int main() {
 
     // printf("Out %f %f %f %f | ", nn->output[0],  nn->output[1],  nn->output[2],  nn->output[3]);
 
-    // backward_propagation(nn, lossf, y_true, m);
+    // backward_pass(nn, lossf, y_true, m);
 
     // for (int j = 0; j < 2; j++){
     //     printf("%d\n", j);
@@ -110,7 +110,7 @@ int main() {
 
         printf("Out %f %f %f %f |  ", nn->output[0],  nn->output[1],  nn->output[2],  nn->output[3]);
 
-        backward_propagation(nn, lossf, y_true, m);
+        backward_pass(nn, lossf, y_true, m);
 
         for (int j = 0; j < nn->num_layers - 1; j++) {
             for (int k = 0; k < nn->layers[j].input_size * nn->layers[j].output_size; k++){
@@ -132,6 +132,53 @@ int main() {
     // Free allocated memory
     free_neural_network(nn);
     // free(lossf);
+}
 
+
+void test_policy() {
+    srand(time(NULL)); 
+    int state_size = 2;
+    int action_size = 1;
+    int m = 4;
+
+    int layer_sizes[] = {state_size, 4, action_size};
+    int num_layers = 3;
+    ActivationFunction activation_functions[] = {{&ReLU, &ReLU_derivative}, {NULL, NULL}};
+    GaussianPolicy* policy = create_gaussian_policy(layer_sizes, activation_functions, num_layers, 1);
+
+    float out[5];
+    generate_gaussian_noise(out, 5);
+
+    printf("Noise: %f %f %f %f %f\n", out[0], out[1], out[2], out[3], out[4]);
+}
+
+
+int main() {
+    // Example usage
+    // test_policy();
+    // test_nn();
+
+    PyObject* pModule = init_env(1);
+    float obs[3];
+
+    reset_env(pModule, obs);
+
+    for (int i = 0; i < 3; i++) {
+        printf("%f ", obs[i]);
+    }
+
+    float reward;
+    bool terminated;
+    bool truncated;
+    float action[1] = {1.0};
+
+    step_env(pModule, action, obs, &reward, &terminated, &truncated, 1);
+    printf("\n");
+    for (int i = 0; i < 3; i++) {
+        printf("%f ", obs[i]);
+    }
+
+    free_env(pModule);
+    
     return 0;
 }

@@ -56,16 +56,22 @@ void forward_propagation(NeuralNetwork* nn, float* input, int m) {
     }
 }
 
-void backward_propagation(NeuralNetwork* nn, LossFunction* lossf, float* y_true, int m) {
-    // out = activation(x * w + b)
-    
-
+void backward_pass(NeuralNetwork* nn, LossFunction* lossf, float* y_true, int m) {
     float loss = lossf->loss(nn->output, y_true, m, nn->output_size);
     printf("Loss: %f\n", loss);
 
+    float loss_grad[m * nn->output_size];
+
+    lossf->loss_derivative(loss_grad, nn->output, y_true, m, nn->output_size);
+    backward_propagation(nn, loss_grad, m);
+}
+
+void backward_propagation(NeuralNetwork* nn, float* grad_in, int m) {
+    // out = activation(x * w + b)
+    
     float* layer_grad = calloc(m * nn->output_size, sizeof(float));
 
-    lossf->loss_derivative(layer_grad, nn->output, y_true, m, nn->output_size);
+    memcpy(layer_grad, grad_in, m * nn->output_size * sizeof(float));
 
     if (nn->layers[nn->num_layers - 2].activation_function->activation_derivative != NULL) {
         nn->layers[nn->num_layers - 2].activation_function->activation_derivative(nn->output, layer_grad, m, nn->output_size);
@@ -99,6 +105,7 @@ void backward_propagation(NeuralNetwork* nn, LossFunction* lossf, float* y_true,
             nn->layers[i - 1].activation_function->activation_derivative(nn->layers[i].input, layer_grad, m, nn->layers[i].input_size);
         }
     }
+    free(layer_grad);
 }
 
 void free_neural_network(NeuralNetwork* nn) {

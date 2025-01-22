@@ -40,6 +40,7 @@ typedef struct {
 NeuralNetwork* create_neural_network(int* layer_sizes, ActivationFunction* activation_functions, int num_layers);
 void forward_propagation(NeuralNetwork* nn, float* input, int m);
 void free_neural_network(NeuralNetwork* nn);
-void backward_propagation(NeuralNetwork* nn, LossFunction* loss, float* y_true, int m);
+void backward_pass(NeuralNetwork* nn, LossFunction* loss, float* y_true, int m);
+void backward_propagation(NeuralNetwork* nn, float* grad_in, int m);
 
 #endif // NEURAL_NETWORK_H
