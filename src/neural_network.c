@@ -14,6 +14,7 @@ NeuralNetwork* create_neural_network(int* layer_sizes, ActivationFunction* activ
         nn->layers[i].grad_weights = (float*)calloc(layer_sizes[i] * layer_sizes[i + 1], sizeof(float));
         nn->layers[i].grad_biases = (float*)calloc(layer_sizes[i + 1], sizeof(float));
         nn->layers[i].activation_function = &activation_functions[i];
+        nn->layers[i].input = NULL;
         // nn->layers[i].output = (float*)malloc(layer_sizes[i + 1] * sizeof(float));
 
         // Initialize weights and biases (for simplicity, using random values)
