@@ -1,0 +1,13 @@
+#ifndef ENV_H
+#define ENV_H
+
+#include <stdbool.h>
+
+typedef struct {
+    void (*free_env)();
+    void (*reset_env)(float* state);
+    void (*step_env)(float* action, float* obs, float* reward, bool* terminated, bool* truncated, int action_size);
+} Env;
+
+
+#endif // ENV_H

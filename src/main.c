@@ -7,6 +7,7 @@
 #include "neural_network.h"
 #include "policy.h"
 #include "gym_env.h"
+#include "trajectory_buffer.h"
 
 float mean_squared_error(float* y, float* y_true, int m, int n) {
     float loss = 0.0;
@@ -158,10 +159,10 @@ int main() {
     // test_policy();
     // test_nn();
 
-    PyObject* pModule = init_env(1);
+    Env* env = create_gym_env(0);
     float obs[3];
 
-    reset_env(pModule, obs);
+    env->reset_env(obs);
 
     for (int i = 0; i < 3; i++) {
         printf("%f ", obs[i]);
@@ -172,13 +173,16 @@ int main() {
     bool truncated;
     float action[1] = {1.0};
 
-    step_env(pModule, action, obs, &reward, &terminated, &truncated, 1);
+    env->step_env(action, obs, &reward, &terminated, &truncated, 1);
     printf("\n");
     for (int i = 0; i < 3; i++) {
         printf("%f ", obs[i]);
     }
 
-    free_env(pModule);
-    
+    env->free_env();
+
+    free(env);
+
+
     return 0;
 }

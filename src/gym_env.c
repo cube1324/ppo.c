@@ -1,6 +1,8 @@
 #include "gym_env.h"
 
-PyObject* init_env(int id) {
+PyObject* pModule;
+
+void init_env(int id) {
 
     Py_Initialize();
 
@@ -11,7 +13,7 @@ PyObject* init_env(int id) {
     Py_DECREF(path);
 
     PyObject *pName = PyUnicode_DecodeFSDefault("gym_env");
-    PyObject *pModule = PyImport_Import(pName);
+    pModule = PyImport_Import(pName);
     Py_DECREF(pName);
 
     if (pModule != NULL) {
@@ -28,15 +30,14 @@ PyObject* init_env(int id) {
     } else {
         PyErr_Print();
     }
-    return pModule;
 }
 
-void free_env(PyObject* pModule) {
+void free_env() {
     Py_DECREF(pModule);
     Py_Finalize();
 }
 
-void reset_env(PyObject* pModule, float* state) {
+void reset_env(float* state) {
     PyObject *pFunc = PyObject_GetAttrString(pModule, "reset_env");
     if (PyCallable_Check(pFunc)) {
         PyObject *pArgs = PyTuple_Pack(0);
@@ -55,7 +56,7 @@ void reset_env(PyObject* pModule, float* state) {
     Py_DECREF(pFunc);
 }
 
-void step_env(PyObject* pModule, float* action, float* obs, float* reward, bool* terminated, bool* truncated, int action_size) {
+void step_env(float* action, float* obs, float* reward, bool* terminated, bool* truncated, int action_size) {
     PyObject *pFunc = PyObject_GetAttrString(pModule, "step_env");
     if (PyCallable_Check(pFunc)) {
         PyObject *pArgs = PyTuple_Pack(1, PyList_New(action_size));
@@ -91,4 +92,14 @@ void step_env(PyObject* pModule, float* action, float* obs, float* reward, bool*
         PyErr_Print();
     }
     Py_DECREF(pFunc);
+}
+
+
+Env* create_gym_env(int id) {
+    init_env(id);
+    Env* env = (Env*)malloc(sizeof(Env));
+    env->free_env = &free_env;
+    env->reset_env = &reset_env;
+    env->step_env = &step_env;
+    return env;
 }
