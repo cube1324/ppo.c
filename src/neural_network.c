@@ -26,6 +26,7 @@ NeuralNetwork* create_neural_network(int* layer_sizes, ActivationFunction* activ
     }
 
     nn->output_size = nn->layers[num_layers - 2].output_size;
+    nn->output = NULL;
 
     return nn;
 }

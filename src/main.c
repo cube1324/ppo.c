@@ -9,27 +9,7 @@
 #include "gym_env.h"
 #include "trajectory_buffer.h"
 #include "ppo.h"
-
-float mean_squared_error(float* y, float* y_true, int m, int n) {
-    float loss = 0.0;
-    for (int i = 0; i < m; i++) {
-        for (int j = 0; j < n; j++) {
-            loss += pow(y_true[i * n + j] - y[i * n + j], 2);
-        }
-    }
-    return loss / m;
-}
-
-
-void mean_squared_error_derivative(float* grad, float* y, float* y_true, int m, int n) {
-    for (int i = 0; i < m; i++) {
-        for (int j = 0; j < n; j++) {
-        // float d_loss = 0.0;
-            grad[i * n + j] = 2 * (y[i * n + j] - y_true[i * n + j]);
-        }
-        // grad[j] = d_loss / m;
-    }
-}
+#include "loss.h"
 
 void ReLU(float* x, int m, int n) {
     for (int i = 0; i < m * n; i++) {
@@ -168,40 +148,24 @@ int main() {
     int num_layers = 3;
     ActivationFunction activation_functions[] = {{&ReLU, &ReLU_derivative}, {NULL, NULL}};
 
-    GaussianPolicy* policy = create_gaussian_policy(layer_sizes, activation_functions, num_layers, 0.1);
-
     Env* env = create_gym_env(0);
 
-    TrajectoryBuffer* buffer = create_trajectory_buffer(1000, state_size, action_size);
+    // TrajectoryBuffer* buffer = create_trajectory_buffer(1000, state_size, action_size);
 
-    collect_trajectories(buffer, env, policy, 10);
+    // GaussianPolicy* policy = create_gaussian_policy(layer_sizes, activation_functions, num_layers, 0.1);
 
-    for (int i = 0; i < 10; i++) {
-        printf("%f %f %f | %f | %f | %d | %d\n", buffer->buffer[i].state[0], buffer->buffer[i].state[1], buffer->buffer[i].state[2], buffer->buffer[i].action[0], buffer->buffer[i].reward, buffer->buffer[i].terminated, buffer->buffer[i].truncated);
-    }
-    // float obs[3];
+    // collect_trajectories(buffer, env, policy, 100);
 
-    // env->reset_env(obs);
-
-    // for (int i = 0; i < 3; i++) {
-    //     printf("%f ", obs[i]);
+    // for (int i = 0; i < 100; i++) {
+    //     printf("%f %f %f | %f | %d %d\n", buffer->buffer[i].state[0], buffer->buffer[i].state[1], buffer->buffer[i].state[2], buffer->buffer[i].action[0], buffer->buffer[i].terminated, buffer->buffer[i].truncated);
     // }
 
-    // float reward;
-    // bool terminated;
-    // bool truncated;
-    // float action[1] = {1.0};
+    PPO* ppo = create_ppo(env, activation_functions, layer_sizes, num_layers, 1000, 0.99, 0.95, 0.1, 0.1);
 
-    // env->step_env(action, obs, &reward, &terminated, &truncated, 1);
-    // printf("\n");
-    // for (int i = 0; i < 3; i++) {
-    //     printf("%f ", obs[i]);
-    // }
+    train_ppo(ppo, 1, 100, 10);
 
     // env->free_env();
-
     // free(env);
-
-
+    // free_ppo(ppo);
     return 0;
 }

@@ -82,10 +82,6 @@ void step_env(float* action, float* obs, float* reward, bool* terminated, bool* 
             *terminated = PyObject_IsTrue(pTerminated);
             *truncated = PyObject_IsTrue(pTruncated);
 
-            Py_DECREF(pObs);
-            Py_DECREF(pReward);
-            Py_DECREF(pTerminated);
-            Py_DECREF(pTruncated);
         }
         Py_DECREF(pValue);
     } else {
@@ -101,5 +97,7 @@ Env* create_gym_env(int id) {
     env->free_env = &free_env;
     env->reset_env = &reset_env;
     env->step_env = &step_env;
+    env->state_size = 3;
+    env->action_size = 1;
     return env;
 }

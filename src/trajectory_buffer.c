@@ -28,8 +28,11 @@ void free_trajectory_buffer(TrajectoryBuffer* buffer) {
 }
 
 void sample_batch(TrajectoryBuffer* buffer, int batch_size, float* states, float* actions, float* rewards, float* next_states, bool* terminated, bool* truncated, float* logprobs) {
+    int limit = buffer->full ? buffer->capacity : buffer->idx;
+    
     for (int i = 0; i < batch_size; i++) {
-        int idx = rand() % buffer->capacity;
+        int idx = rand() % limit;
+
         for (int j = 0; j < buffer->state_size; j++) {
             states[i * buffer->state_size + j] = buffer->buffer[idx].state[j];
             next_states[i * buffer->state_size + j] = buffer->buffer[idx].next_state[j];

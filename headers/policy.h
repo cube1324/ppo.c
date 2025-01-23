@@ -15,11 +15,11 @@ typedef struct {
     float* input_action;
 } GaussianPolicy;
 
-GaussianPolicy* create_gaussian_policy(int* layer_sizes, ActivationFunction* activation_functions, int num_layers, int init_std);
+GaussianPolicy* create_gaussian_policy(int* layer_sizes, ActivationFunction* activation_functions, int num_layers, float init_std);
 void free_gaussian_policy(GaussianPolicy* policy);
 
 void generate_gaussian_noise(float* out, int n);
-float compute_log_prob(float mu, float log_std, float action);
+float compute_log_prob(float* mu, float* log_std, float* action, int action_size);
 
 void sample_action(GaussianPolicy* policy, float* state, float* action, float* log_prob, int m);
 void log_prob(GaussianPolicy* policy, float* out, float* state, float* action, int m);
