@@ -51,6 +51,13 @@ void collect_trajectories(TrajectoryBuffer* buffer, Env* env, GaussianPolicy* po
 }
 
 
+float policy_loss(float* adv, float* logprobs,  float* old_logprobs, int epsilon, int m) {
+    
+
+
+}
+
+
 void compute_gae(NeuralNetwork* V, float* v_target, float* adv, float* state, float* reward, float* next_state, bool* terminated, bool* truncated, float gamma, float lambda, int m) {
     float v_next[m];
     forward_propagation(V, next_state, m);
@@ -86,6 +93,7 @@ void train_ppo(PPO* ppo, int epochs, int batch_size, int num_batches) {
     bool terminated[batch_size];
     bool truncated[batch_size];
     float logprobs[batch_size];
+    float logprobs_old[batch_size];
 
     float v_target[batch_size];
     float adv[batch_size];
@@ -96,7 +104,7 @@ void train_ppo(PPO* ppo, int epochs, int batch_size, int num_batches) {
 
         for (int j = 0; j < num_batches; j++) {
 
-            sample_batch(ppo->buffer, batch_size, states, actions, rewards, next_states, terminated, truncated, logprobs);
+            sample_batch(ppo->buffer, batch_size, states, actions, rewards, next_states, terminated, truncated, logprobs_old);
 
             // Compute advantages
             compute_gae(ppo->V, v_target, adv, states, rewards, next_states, terminated, truncated, ppo->gamma, ppo->lambda, batch_size);
@@ -111,6 +119,10 @@ void train_ppo(PPO* ppo, int epochs, int batch_size, int num_batches) {
 
 
             // Compute policy loss
+            // SETS VALUES FOR GRAD COMPUTATION
+            compute_log_prob(ppo->policy, logprobs, states, actions, batch_size);
+
+            // float policy_loss = policy_loss(ppo->policy, states, actions, adv, logprobs_old, batch_size);
 
             // Update Policy
         }

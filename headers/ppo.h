@@ -24,7 +24,7 @@ void free_ppo(PPO* ppo);
 void collect_trajectories(TrajectoryBuffer* buffer, Env* env, GaussianPolicy* policy, int steps);
 void compute_gae(NeuralNetwork* V, float* v_target, float* adv, float* state, float* reward, float* next_state, bool* terminated, bool* truncated, float gamma, float lambda, int m);
 
-float policy_loss(GaussianPolicy* policy, float* states, float* actions, float* adv, float* old_logprobs, int m);
+float policy_loss(float* adv, float* logprobs,  float* old_logprobs, int epsilon, int m);
 
 void policy_loss_backward(GaussianPolicy* policy, float* grad_out, float* states, float* actions, float* adv, float* old_logprobs, int m);
 

@@ -40,7 +40,7 @@ void generate_gaussian_noise(float* out, int n) {
     }
 }
 
-float compute_log_prob(float* mu, float* log_std, float* action, int action_size) {
+float _compute_log_prob(float* mu, float* log_std, float* action, int action_size) {
     float logprob = -0.5 * action_size *  log(2 * M_PI) ;
 
     for (int i = 0; i < action_size; i++){
@@ -59,19 +59,19 @@ void sample_action(GaussianPolicy* policy, float* state, float* action, float* l
         for (int j = 0; j < policy->action_size; j++) {
             action[i * policy->action_size + j] = policy->mu->output[i * policy->action_size + j] + noise[i * policy->action_size + j] * exp(policy->log_std[j]);
         }
-        log_prob[i] = compute_log_prob(policy->mu->output + i * policy->action_size, policy->log_std, action + i * policy->action_size, policy->action_size);
+        log_prob[i] = _compute_log_prob(policy->mu->output + i * policy->action_size, policy->log_std, action + i * policy->action_size, policy->action_size);
     }
     free(noise);
 }
 
-void log_prob(GaussianPolicy* policy, float* out, float* state, float* action, int m) {
+void compute_log_prob(GaussianPolicy* policy, float* out, float* state, float* action, int m) {
     free(policy->input_action);
     policy->input_action = action;
 
     forward_propagation(policy->mu, state, m);
 
     for (int i = 0; i < m; i++) {
-        out[i] = compute_log_prob(policy->mu->output + i * policy->action_size, policy->log_std, action + i * policy->action_size, policy->action_size);
+        out[i] = _compute_log_prob(policy->mu->output + i * policy->action_size, policy->log_std, action + i * policy->action_size, policy->action_size);
     }
 }
 
