@@ -8,6 +8,7 @@
 #include "policy.h"
 #include "gym_env.h"
 #include "trajectory_buffer.h"
+#include "ppo.h"
 
 float mean_squared_error(float* y, float* y_true, int m, int n) {
     float loss = 0.0;
@@ -159,29 +160,47 @@ int main() {
     // test_policy();
     // test_nn();
 
+    int state_size = 3;
+    int action_size = 1;
+    int m = 4;
+
+    int layer_sizes[] = {state_size, 4, action_size};
+    int num_layers = 3;
+    ActivationFunction activation_functions[] = {{&ReLU, &ReLU_derivative}, {NULL, NULL}};
+
+    GaussianPolicy* policy = create_gaussian_policy(layer_sizes, activation_functions, num_layers, 0.1);
+
     Env* env = create_gym_env(0);
-    float obs[3];
 
-    env->reset_env(obs);
+    TrajectoryBuffer* buffer = create_trajectory_buffer(1000, state_size, action_size);
 
-    for (int i = 0; i < 3; i++) {
-        printf("%f ", obs[i]);
+    collect_trajectories(buffer, env, policy, 10);
+
+    for (int i = 0; i < 10; i++) {
+        printf("%f %f %f | %f | %f | %d | %d\n", buffer->buffer[i].state[0], buffer->buffer[i].state[1], buffer->buffer[i].state[2], buffer->buffer[i].action[0], buffer->buffer[i].reward, buffer->buffer[i].terminated, buffer->buffer[i].truncated);
     }
+    // float obs[3];
 
-    float reward;
-    bool terminated;
-    bool truncated;
-    float action[1] = {1.0};
+    // env->reset_env(obs);
 
-    env->step_env(action, obs, &reward, &terminated, &truncated, 1);
-    printf("\n");
-    for (int i = 0; i < 3; i++) {
-        printf("%f ", obs[i]);
-    }
+    // for (int i = 0; i < 3; i++) {
+    //     printf("%f ", obs[i]);
+    // }
 
-    env->free_env();
+    // float reward;
+    // bool terminated;
+    // bool truncated;
+    // float action[1] = {1.0};
 
-    free(env);
+    // env->step_env(action, obs, &reward, &terminated, &truncated, 1);
+    // printf("\n");
+    // for (int i = 0; i < 3; i++) {
+    //     printf("%f ", obs[i]);
+    // }
+
+    // env->free_env();
+
+    // free(env);
 
 
     return 0;
