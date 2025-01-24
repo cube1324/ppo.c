@@ -91,7 +91,7 @@ void backward_propagation(NeuralNetwork* nn, float* grad_in, int m) {
             for (int k = 0; k < m; k++){
                 nn->layers[i].grad_biases[j] += layer_grad[k * nn->layers[i].output_size + j];
             }
-            nn->layers[i].grad_biases[j] /= m;
+            // nn->layers[i].grad_biases[j] /= m;
         }
 
 

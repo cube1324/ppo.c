@@ -20,7 +20,9 @@ void free_gaussian_policy(GaussianPolicy* policy);
 
 void sample_action(GaussianPolicy* policy, float* state, float* action, float* log_prob, int m);
 void compute_log_prob(GaussianPolicy* policy, float* out, float* state, float* action, int m);
-void log_prob_backwards(GaussianPolicy* policy, float* grad_in, float* state, float* action, int m);
+void log_prob_backwards(GaussianPolicy* policy, float* grad_in, int m);
+
+float compute_entropy(GaussianPolicy* policy);
 
 
 #endif // POLICY_H

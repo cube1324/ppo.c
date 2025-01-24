@@ -8,6 +8,7 @@ GaussianPolicy* create_gaussian_policy(int* layer_sizes, ActivationFunction* act
     policy->action_size = layer_sizes[num_layers - 1];
     policy->mu = create_neural_network(layer_sizes, activation_functions, num_layers);
     policy->log_std = (float*)malloc(policy->action_size * sizeof(float));
+    policy->input_action = NULL;
 
     for (int i = 0; i < policy->action_size; i++) {
         policy->log_std[i] = log(init_std);
@@ -29,22 +30,22 @@ void generate_gaussian_noise(float* out, int n) {
     for (int i = 0; i <= n / 2; i+= 2) {
         float u1 = (float)rand() / RAND_MAX;
         float u2 = (float)rand() / RAND_MAX;
-        float r = sqrt(-2 * log(u1));
+        float r = sqrtf(-2 * logf(u1));
         float theta = 2 * M_PI * u2;
-        out[i] = r * cos(theta);
-        out[i + 1] = r * sin(theta);
+        out[i] = r * cosf(theta);
+        out[i + 1] = r * sinf(theta);
     }
 
     if (n % 2 == 1) {
-        out[n - 1] = sqrt(-2 * log((float)rand() / RAND_MAX)) * cos(2 * M_PI * (float)rand() / RAND_MAX);
+        out[n - 1] = sqrtf(-2 * logf((float)rand() / RAND_MAX)) * cosf(2 * M_PI * (float)rand() / RAND_MAX);
     }
 }
 
 float _compute_log_prob(float* mu, float* log_std, float* action, int action_size) {
-    float logprob = -0.5 * action_size *  log(2 * M_PI) ;
+    float logprob = -0.5 * action_size *  logf(2 * M_PI) ;
 
     for (int i = 0; i < action_size; i++){
-        logprob -= log_std[i] + 0.5 * pow((action[i] - mu[i]) / exp(log_std[i]), 2);
+        logprob -= log_std[i] + 0.5 * powf((action[i] - mu[i]) / expf(log_std[i]), 2);
     }
     return logprob;
 }
@@ -57,7 +58,7 @@ void sample_action(GaussianPolicy* policy, float* state, float* action, float* l
 
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < policy->action_size; j++) {
-            action[i * policy->action_size + j] = policy->mu->output[i * policy->action_size + j] + noise[i * policy->action_size + j] * exp(policy->log_std[j]);
+            action[i * policy->action_size + j] = policy->mu->output[i * policy->action_size + j] + noise[i * policy->action_size + j] * expf(policy->log_std[j]);
         }
         log_prob[i] = _compute_log_prob(policy->mu->output + i * policy->action_size, policy->log_std, action + i * policy->action_size, policy->action_size);
     }
@@ -65,7 +66,6 @@ void sample_action(GaussianPolicy* policy, float* state, float* action, float* l
 }
 
 void compute_log_prob(GaussianPolicy* policy, float* out, float* state, float* action, int m) {
-    free(policy->input_action);
     policy->input_action = action;
 
     forward_propagation(policy->mu, state, m);
@@ -75,14 +75,23 @@ void compute_log_prob(GaussianPolicy* policy, float* out, float* state, float* a
     }
 }
 
-void log_prob_backwards(GaussianPolicy* policy, float* grad_in, float* state, float* action, int m) {
-    float* grad_out = (float*)malloc(m * policy->action_size * sizeof(float));
+void log_prob_backwards(GaussianPolicy* policy, float* grad_in, int m) {
+    float grad_out[m * policy->action_size];
 
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < policy->action_size; j++) {
-            grad_out[i * policy->action_size + j] = (policy->input_action[i * policy->action_size + j] - policy->mu->output[i * policy->action_size + j]) / pow(exp(policy->log_std[j]), 2) * grad_in[i * policy->action_size + j];
+            grad_out[i * policy->action_size + j] = (policy->input_action[i * policy->action_size + j] - policy->mu->output[i * policy->action_size + j]) / powf(expf(policy->log_std[j]), 2) * grad_in[i * policy->action_size + j];
         }
     }
 
     backward_propagation(policy->mu, grad_out, m);
+}
+
+float compute_entropy(GaussianPolicy* policy) {
+    float entropy = policy->action_size * 0.5 * (1 + log(2 * M_PI));
+    for (int j = 0; j < policy->action_size; j++) {
+        entropy += 0.5 * expf(policy->log_std[j]);
+    }
+
+    return entropy;
 }

@@ -40,7 +40,7 @@ void mat_mul_backwards(float* grad_x, float* grad_weight, float* grad_in, float*
             for (int k = 0; k < m; k++){
                 grad_weight[i * n + j] += grad_in[k * l + i] * x[k * n + j];
             }
-            grad_weight[i * n + j] /= m;
+            // grad_weight[i * n + j] /= m;
         }
     }
 }

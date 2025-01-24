@@ -117,22 +117,22 @@ void test_nn(){
 }
 
 
-void test_policy() {
-    srand(time(NULL)); 
-    int state_size = 2;
-    int action_size = 1;
-    int m = 4;
+// void test_policy() {
+//     srand(time(NULL)); 
+//     int state_size = 2;
+//     int action_size = 1;
+//     int m = 4;
 
-    int layer_sizes[] = {state_size, 4, action_size};
-    int num_layers = 3;
-    ActivationFunction activation_functions[] = {{&ReLU, &ReLU_derivative}, {NULL, NULL}};
-    GaussianPolicy* policy = create_gaussian_policy(layer_sizes, activation_functions, num_layers, 1);
+//     int layer_sizes[] = {state_size, 4, action_size};
+//     int num_layers = 3;
+//     ActivationFunction activation_functions[] = {{&ReLU, &ReLU_derivative}, {NULL, NULL}};
+//     GaussianPolicy* policy = create_gaussian_policy(layer_sizes, activation_functions, num_layers, 1);
 
-    float out[5];
-    generate_gaussian_noise(out, 5);
+//     float out[5];
+//     generate_gaussian_noise(out, 5);
 
-    printf("Noise: %f %f %f %f %f\n", out[0], out[1], out[2], out[3], out[4]);
-}
+//     printf("Noise: %f %f %f %f %f\n", out[0], out[1], out[2], out[3], out[4]);
+// }
 
 
 int main() {
@@ -160,7 +160,7 @@ int main() {
     //     printf("%f %f %f | %f | %d %d\n", buffer->buffer[i].state[0], buffer->buffer[i].state[1], buffer->buffer[i].state[2], buffer->buffer[i].action[0], buffer->buffer[i].terminated, buffer->buffer[i].truncated);
     // }
 
-    PPO* ppo = create_ppo(env, activation_functions, layer_sizes, num_layers, 1000, 0.99, 0.95, 0.1, 0.1);
+    PPO* ppo = create_ppo(env, activation_functions, layer_sizes, num_layers, 1000, 0.99, 0.95, 0.1, 0.001, 0.1);
 
     train_ppo(ppo, 1, 100, 10);
 
