@@ -107,13 +107,28 @@ void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float* v_target, fl
         delta[i] = *buffer->reward(buffer, i) + gamma * v_next[i] * !*buffer->terminated(buffer, i) - v[i];
     }
 
-    // TODO Fix this
+    float sum = 0;
     for (int i = limit - 1; i >= 0; i--) {
         *buffer->advantage(buffer, i) = delta[i] + gamma * lambda * !*buffer->truncated(buffer, i) * *buffer->advantage(buffer, i + 1);
+
+        sum += *buffer->advantage(buffer, i);
     }
 
     for (int i = 0; i < limit; i++) {
         v_target[i] = v[i] + *buffer->advantage(buffer, i);
+    }
+
+
+    float mean = sum / limit;
+    
+    float std = 0;
+    for (int i = 0; i < limit; i++) {
+        std += pow(*buffer->advantage(buffer, i) - mean, 2);
+    }
+    std = sqrt(std / limit);
+
+    for (int i = 0; i < limit; i++) {
+        *buffer->advantage(buffer, i) = (*buffer->advantage(buffer, i) - mean) / std;
     }
 }
 

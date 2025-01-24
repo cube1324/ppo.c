@@ -29,7 +29,7 @@ void test_nn(){
     int m = 4;
 
 
-    int layer_sizes[] = {input_size, 4, output_size};
+    int layer_sizes[] = {input_size, 32, output_size};
     int num_layers = 3;
     float* input = malloc(m * input_size * sizeof(float));
 
@@ -87,7 +87,7 @@ void test_nn(){
 
 
 
-    for (int i = 0; i < 2000; i++){
+    for (int i = 0; i < 1000; i++){
         forward_propagation(nn, input, m);
 
         printf("Out %f %f %f %f |  ", nn->output[0],  nn->output[1],  nn->output[2],  nn->output[3]);
@@ -149,16 +149,6 @@ int main() {
     ActivationFunction activation_functions[] = {{&ReLU, &ReLU_derivative}, {NULL, NULL}};
 
     Env* env = create_gym_env(0);
-
-    // TrajectoryBuffer* buffer = create_trajectory_buffer(1000, state_size, action_size);
-
-    // GaussianPolicy* policy = create_gaussian_policy(layer_sizes, activation_functions, num_layers, 0.1);
-
-    // collect_trajectories(buffer, env, policy, 100);
-
-    // for (int i = 0; i < 100; i++) {
-    //     printf("%f %f %f | %f | %d %d\n", buffer->buffer[i].state[0], buffer->buffer[i].state[1], buffer->buffer[i].state[2], buffer->buffer[i].action[0], buffer->buffer[i].terminated, buffer->buffer[i].truncated);
-    // }
 
     PPO* ppo = create_ppo(env, activation_functions, layer_sizes, num_layers, 1000, 0.99, 0.95, 0.1, 0.001, 0.1);
 
