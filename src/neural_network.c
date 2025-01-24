@@ -10,19 +10,19 @@ NeuralNetwork* create_neural_network(int* layer_sizes, ActivationFunction* activ
         nn->layers[i].input_size = layer_sizes[i];
         nn->layers[i].output_size = layer_sizes[i + 1];
         nn->layers[i].weights = (float*)malloc(layer_sizes[i] * layer_sizes[i + 1] * sizeof(float));
-        nn->layers[i].biases = (float*)malloc(layer_sizes[i + 1] * sizeof(float));
+        nn->layers[i].biases = (float*)calloc(layer_sizes[i + 1], sizeof(float));
         nn->layers[i].grad_weights = (float*)calloc(layer_sizes[i] * layer_sizes[i + 1], sizeof(float));
         nn->layers[i].grad_biases = (float*)calloc(layer_sizes[i + 1], sizeof(float));
         nn->layers[i].activation_function = &activation_functions[i];
         nn->layers[i].input = NULL;
-        // nn->layers[i].output = (float*)malloc(layer_sizes[i + 1] * sizeof(float));
 
-        // Initialize weights and biases (for simplicity, using random values)
+        // Initialize weights and biases, he init for hidden layers and xavier for output layer
+        float scale = i == num_layers - 2 ? sqrtf(6.0 / (layer_sizes[i] + layer_sizes[i + 1])) : sqrtf(6.0 / layer_sizes[i]); 
+
         for (int j = 0; j < layer_sizes[i] * layer_sizes[i + 1]; j++) {
-            nn->layers[i].weights[j] = (float)rand() / RAND_MAX;
-        }
-        for (int j = 0; j < layer_sizes[i + 1]; j++) {
-            nn->layers[i].biases[j] = (float)rand() / RAND_MAX;
+            for (int j = 0; j < layer_sizes[i] * layer_sizes[i + 1]; j++) {
+                nn->layers[i].weights[j] = (2 * (float)rand() / RAND_MAX - 1) * scale;
+            }
         }
     }
 
@@ -33,7 +33,6 @@ NeuralNetwork* create_neural_network(int* layer_sizes, ActivationFunction* activ
 }
 
 void forward_propagation(NeuralNetwork* nn, float* input, int m) {
-    // float* temp_output = (float*)malloc(nn->layers[0].output_size * sizeof(float));
     nn->layers[0].input = input;
 
     int last_idx = nn->num_layers - 2;
@@ -91,9 +90,7 @@ void backward_propagation(NeuralNetwork* nn, float* grad_in, int m) {
             for (int k = 0; k < m; k++){
                 nn->layers[i].grad_biases[j] += layer_grad[k * nn->layers[i].output_size + j];
             }
-            // nn->layers[i].grad_biases[j] /= m;
         }
-
 
         // Compute derivative for x and w
         mat_mul_backwards(temp_grad_x, nn->layers[i].grad_weights, layer_grad, nn->layers[i].input, nn->layers[i].weights, m, nn->layers[i].input_size, nn->layers[i].output_size);
