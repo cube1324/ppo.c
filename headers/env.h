@@ -12,4 +12,6 @@ typedef struct {
 } Env;
 
 
+Env* create_simple_env(int seed);
+
 #endif // ENV_H

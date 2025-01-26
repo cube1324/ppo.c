@@ -128,14 +128,15 @@ void test_nn(){
 int main() {
     // test_nn();
 
-    Env* env = create_gym_env(0);
+    // Env* env = create_gym_env(0);
+    Env* env = create_simple_env(0);
 
     int layer_sizes[] = {env->state_size, 32, 32, env->action_size};
     int num_layers = 4;
     
     ActivationFunction activation_functions[] = {{&ReLU, &ReLU_derivative}, {&ReLU, &ReLU_derivative}, {NULL, NULL}};
 
-    float lr = 0.0003;
+    float lr = 3e-4;
     int batch_size = 64;
     float gamma = 0.99;
     float lambda = 0.95;
@@ -143,16 +144,17 @@ int main() {
     float ent_coeff = 0.0;
     float init_std = 1.0;
     int n_epochs_policy = 4;
+    int n_epochs_value = 10;
     int steps_per_epoch = 30000;
     int steps_per_fit = 3000;
-    int n_epochs = 10;
+    int n_epochs = 30;
 
     PPO* ppo = create_ppo(env, activation_functions, layer_sizes, num_layers, steps_per_fit, lr, lr, gamma, lambda, epsilon, ent_coeff, init_std);
 
     eval_ppo(ppo, 3000);
 
     for (int i = 0; i < n_epochs; i++) {
-        train_ppo_epoch(ppo, steps_per_epoch, batch_size, (int)(steps_per_fit / batch_size) * n_epochs_policy);
+        train_ppo_epoch(ppo, steps_per_epoch, batch_size, n_epochs_policy, n_epochs_value);
         eval_ppo(ppo, 3000);
     }
 

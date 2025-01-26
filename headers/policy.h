@@ -9,6 +9,7 @@
 typedef struct {
     NeuralNetwork* mu;
     float* log_std;
+    float* log_std_grad;
     int state_size;
     int action_size;
 
@@ -20,7 +21,7 @@ void free_gaussian_policy(GaussianPolicy* policy);
 
 void sample_action(GaussianPolicy* policy, float* state, float* action, float* log_prob, int m);
 void compute_log_prob(GaussianPolicy* policy, float* out, float* state, float* action, int m);
-void log_prob_backwards(GaussianPolicy* policy, float* grad_in, int m);
+void log_prob_backwards(GaussianPolicy* policy, float* grad_in, float* grad_mu, float* grad_log_std, int m);
 
 float compute_entropy(GaussianPolicy* policy);
 
