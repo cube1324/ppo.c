@@ -10,19 +10,24 @@ NeuralNetwork* create_neural_network(int* layer_sizes, ActivationFunction* activ
         nn->layers[i].input_size = layer_sizes[i];
         nn->layers[i].output_size = layer_sizes[i + 1];
         nn->layers[i].weights = (float*)malloc(layer_sizes[i] * layer_sizes[i + 1] * sizeof(float));
-        nn->layers[i].biases = (float*)calloc(layer_sizes[i + 1], sizeof(float));
+        nn->layers[i].biases = (float*)malloc(layer_sizes[i + 1] * sizeof(float));
         nn->layers[i].grad_weights = (float*)calloc(layer_sizes[i] * layer_sizes[i + 1], sizeof(float));
         nn->layers[i].grad_biases = (float*)calloc(layer_sizes[i + 1], sizeof(float));
         nn->layers[i].activation_function = &activation_functions[i];
         nn->layers[i].input = NULL;
 
         // Initialize weights and biases, he init for hidden layers and xavier for output layer
-        float scale = i == num_layers - 2 ? sqrtf(6.0 / (layer_sizes[i] + layer_sizes[i + 1])) : sqrtf(6.0 / layer_sizes[i]); 
+        float gain = i == num_layers - 2 ? 1 : sqrtf(2.0); 
 
         for (int j = 0; j < layer_sizes[i] * layer_sizes[i + 1]; j++) {
             for (int j = 0; j < layer_sizes[i] * layer_sizes[i + 1]; j++) {
-                nn->layers[i].weights[j] = (2 * (float)rand() / RAND_MAX - 1) * scale;
+                float std = gain * sqrtf(2.0 / (layer_sizes[i] + layer_sizes[i + 1]));
+                nn->layers[i].weights[j] = (2 * (float)rand() / RAND_MAX - 1) * sqrtf(3.0) * std;
             }
+        }
+
+        for (int j = 0; j < layer_sizes[i + 1]; j++) {
+            nn->layers[i].biases[j] = (2 * (float)rand() / RAND_MAX - 1) * (1. / sqrtf(layer_sizes[i]));
         }
     }
 
@@ -39,6 +44,14 @@ void forward_propagation(NeuralNetwork* nn, float* input, int m) {
 
     for (int i = 0; i < last_idx; i++) {
         free(nn->layers[i + 1].input);
+        // for (int j = 0; j < m; j++) {
+        //     for (int k = 0; k < nn->layers[i].input_size; k++) {
+        //         printf("%f ", nn->layers[i].input[j * nn->layers[i].input_size + k]);
+        //     }
+        //     printf("\n");
+        // }
+        // printf("\n");
+
         nn->layers[i + 1].input = calloc(m * nn->layers[i + 1].input_size, sizeof(float));
 
         mat_mul(nn->layers[i + 1].input, nn->layers[i].input, nn->layers[i].weights, nn->layers[i].biases, m, nn->layers[i].input_size, nn->layers[i].output_size);
@@ -49,6 +62,14 @@ void forward_propagation(NeuralNetwork* nn, float* input, int m) {
     }
     free(nn->output);
     nn->output = calloc(m * nn->output_size, sizeof(float));
+
+    // for (int j = 0; j < m; j++) {
+    //     for (int k = 0; k < nn->layers[last_idx].input_size; k++) {
+    //         printf("%f ", nn->layers[last_idx].input[j * nn->layers[last_idx].input_size + k]);
+    //     }
+    //     printf("\n");
+    // }
+    // printf("\n");
 
     mat_mul(nn->output, nn->layers[last_idx].input, nn->layers[last_idx].weights, nn->layers[last_idx].biases, m, nn->layers[last_idx].input_size, nn->output_size);
 
@@ -99,8 +120,7 @@ void backward_propagation(NeuralNetwork* nn, float* grad_in, int m) {
         free(layer_grad);
         layer_grad = temp_grad_x;
 
-        // Apply 
-        if (i > 0 && nn->layers[i].activation_function->activation_derivative != NULL) {
+        if (i > 0 && nn->layers[i - 1].activation_function->activation_derivative != NULL) {
             nn->layers[i - 1].activation_function->activation_derivative(nn->layers[i].input, layer_grad, m, nn->layers[i].input_size);
         }
     }
