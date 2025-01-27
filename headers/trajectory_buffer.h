@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
 typedef struct TrajectoryBuffer TrajectoryBuffer;
@@ -40,6 +41,8 @@ TrajectoryBuffer* create_trajectory_buffer(int capacity, int state_size, int act
 void free_trajectory_buffer(TrajectoryBuffer* buffer);
 void sample_batch(TrajectoryBuffer* buffer, int batch_size, float* states, float* actions, float* logprobs, float* advantages, float* adv_targets);
 
+void shuffle_buffer(TrajectoryBuffer* buffer);
+void get_batch(TrajectoryBuffer* buffer, int batch_idx, int batch_size, float* states, float* actions, float* logprobs, float* advantages, float* adv_targets);
 void reset_buffer(TrajectoryBuffer* buffer);
 
 // float* get_state(TrajectoryBuffer* buffer, int idx);

@@ -136,7 +136,7 @@ int main() {
     
     ActivationFunction activation_functions[] = {{&ReLU, &ReLU_derivative}, {&ReLU, &ReLU_derivative}, {NULL, NULL}};
 
-    float lr = 3e-4;
+    float lr = 1e-3;
     int batch_size = 64;
     float gamma = 0.99;
     float lambda = 0.95;
@@ -158,8 +158,8 @@ int main() {
         eval_ppo(ppo, 3000);
     }
 
-    // env->free_env();
-    // free(env);
-    // free_ppo(ppo);
+    env->free_env();
+    free(env);
+    free_ppo(ppo);
     return 0;
 }

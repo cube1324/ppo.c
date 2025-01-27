@@ -126,7 +126,7 @@ void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float 
 
     float sum = 0;
     for (int i = limit - 1; i >= 0; i--) {
-        *buffer->advantage(buffer, i) = delta[i] + gamma * lambda * !*buffer->truncated(buffer, i) * *buffer->advantage(buffer, i + 1);
+        *buffer->advantage(buffer, i) = delta[i] + gamma * lambda * !(*buffer->truncated(buffer, i) || *buffer->terminated(buffer, i)) * *buffer->advantage(buffer, i + 1);
 
         sum += *buffer->advantage(buffer, i);
     }
@@ -185,9 +185,12 @@ void train_ppo_epoch(PPO* ppo, int steps_per_epoch, int batch_size, int n_epochs
 
         // printf("V loss: %f\n", v_loss);
 
+        shuffle_buffer(ppo->buffer);
+
         // Fit value function
         for (int j = 0; j < num_batches_value; j++) {
-            sample_batch(ppo->buffer, batch_size, states, actions, logprobs_old, adv, adv_target);
+            // sample_batch(ppo->buffer, batch_size, states, actions, logprobs_old, adv, adv_target);
+            get_batch(ppo->buffer, j, batch_size, states, actions, logprobs_old, adv, adv_target);
 
             forward_propagation(ppo->V, states, batch_size);
 
@@ -204,9 +207,12 @@ void train_ppo_epoch(PPO* ppo, int steps_per_epoch, int batch_size, int n_epochs
 
         // adam_update(ppo->adam_V, ppo->lr_V);
 
+        // printf("VLOSS: %f\n", v_loss);
+
         for (int j = 0; j < num_batches_policy; j++) {
 
-            sample_batch(ppo->buffer, batch_size, states, actions, logprobs_old, adv, adv_target);
+            // sample_batch(ppo->buffer, batch_size, states, actions, logprobs_old, adv, adv_target);
+            get_batch(ppo->buffer, j, batch_size, states, actions, logprobs_old, adv, adv_target);
 
             // Compute policy loss
             // SETS VALUES FOR GRAD COMPUTATION

@@ -68,16 +68,71 @@ TrajectoryBuffer* create_trajectory_buffer(int capacity, int state_size, int act
 
 
 void free_trajectory_buffer(TrajectoryBuffer* buffer) {
-    free(buffer->action);
-    free(buffer->state);
-    free(buffer->next_state);
-    free(buffer->reward);
-    free(buffer->logprob);
-    free(buffer->advantage);
-    free(buffer->adv_target);
-    free(buffer->terminated);
-    free(buffer->truncated);
+    free(buffer->action_p);
+    free(buffer->state_p);
+    free(buffer->next_state_p);
+    free(buffer->reward_p);
+    free(buffer->logprob_p);
+    free(buffer->advantage_p);
+    free(buffer->adv_target_p);
+    free(buffer->terminated_p);
+    free(buffer->truncated_p);
     free(buffer);
+}
+
+void shuffle_buffer(TrajectoryBuffer* buffer){
+    int limit = buffer->full ? buffer->capacity : buffer->idx;
+    for (int i = 0; i < limit; i++) {
+        int idx = rand() % limit;
+        float* state = buffer->state(buffer, i);
+        float* action = buffer->action(buffer, i);
+        float* next_state = buffer->next_state(buffer, i);
+        float* reward = buffer->reward(buffer, i);
+        float* logprob = buffer->logprob(buffer, i);
+        float* advantage = buffer->advantage(buffer, i);
+        float* adv_target = buffer->adv_target(buffer, i);
+        bool* terminated = buffer->terminated(buffer, i);
+        bool* truncated = buffer->truncated(buffer, i);
+
+        memcpy(buffer->state(buffer, i), buffer->state(buffer, idx), buffer->state_size * sizeof(float));
+        memcpy(buffer->action(buffer, i), buffer->action(buffer, idx), buffer->action_size * sizeof(float));
+        memcpy(buffer->next_state(buffer, i), buffer->next_state(buffer, idx), buffer->state_size * sizeof(float));
+        *reward = *buffer->reward(buffer, idx);
+        *logprob = *buffer->logprob(buffer, idx);
+        *advantage = *buffer->advantage(buffer, idx);
+        *adv_target = *buffer->adv_target(buffer, idx);
+        *terminated = *buffer->terminated(buffer, idx);
+        *truncated = *buffer->truncated(buffer, idx);
+
+        memcpy(buffer->state(buffer, idx), state, buffer->state_size * sizeof(float));
+        memcpy(buffer->action(buffer, idx), action, buffer->action_size * sizeof(float));
+        memcpy(buffer->next_state(buffer, idx), next_state, buffer->state_size * sizeof(float));
+        *buffer->reward(buffer, idx) = *reward;
+        *buffer->logprob(buffer, idx) = *logprob;
+        *buffer->advantage(buffer, idx) = *advantage;
+        *buffer->adv_target(buffer, idx) = *adv_target;
+        *buffer->terminated(buffer, idx) = *terminated;
+        *buffer->truncated(buffer, idx) = *truncated;
+    }
+}
+
+void get_batch(TrajectoryBuffer* buffer, int batch_idx, int batch_size, float* states, float* actions, float* logprobs, float* advantages, float* adv_targets) {
+    int limit = buffer->full ? buffer->capacity : buffer->idx;
+
+    int offset = batch_idx * batch_size;
+
+    for (int i = 0; i < batch_size; i++) {
+        int idx = (offset + i) % limit;
+        for (int j = 0; j < buffer->state_size; j++) {
+            states[i * buffer->state_size + j] = buffer->state(buffer, idx)[j];
+        }
+        for (int j = 0; j < buffer->action_size; j++) {
+            actions[i * buffer->action_size + j] = buffer->action(buffer, idx)[j];
+        }
+        logprobs[i] = *buffer->logprob(buffer, idx);
+        advantages[i] = *buffer->advantage(buffer, idx);
+        adv_targets[i] = *buffer->adv_target(buffer, idx);
+    }
 }
 
 void sample_batch(TrajectoryBuffer* buffer, int batch_size, float* states, float* actions, float* logprobs, float* advantages, float* adv_targets) {

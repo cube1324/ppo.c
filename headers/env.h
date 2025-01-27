@@ -2,6 +2,7 @@
 #define ENV_H
 
 #include <stdbool.h>
+#include <stdlib.h>
 
 typedef struct {
     void (*free_env)();

@@ -38,19 +38,14 @@ NeuralNetwork* create_neural_network(int* layer_sizes, ActivationFunction* activ
 }
 
 void forward_propagation(NeuralNetwork* nn, float* input, int m) {
-    nn->layers[0].input = input;
+    free(nn->layers[0].input);
+    nn->layers[0].input = malloc(m * nn->layers[0].input_size * sizeof(float));
+    memcpy(nn->layers[0].input, input, m * nn->layers[0].input_size * sizeof(float));
 
     int last_idx = nn->num_layers - 2;
 
     for (int i = 0; i < last_idx; i++) {
         free(nn->layers[i + 1].input);
-        // for (int j = 0; j < m; j++) {
-        //     for (int k = 0; k < nn->layers[i].input_size; k++) {
-        //         printf("%f ", nn->layers[i].input[j * nn->layers[i].input_size + k]);
-        //     }
-        //     printf("\n");
-        // }
-        // printf("\n");
 
         nn->layers[i + 1].input = calloc(m * nn->layers[i + 1].input_size, sizeof(float));
 
@@ -62,14 +57,6 @@ void forward_propagation(NeuralNetwork* nn, float* input, int m) {
     }
     free(nn->output);
     nn->output = calloc(m * nn->output_size, sizeof(float));
-
-    // for (int j = 0; j < m; j++) {
-    //     for (int k = 0; k < nn->layers[last_idx].input_size; k++) {
-    //         printf("%f ", nn->layers[last_idx].input[j * nn->layers[last_idx].input_size + k]);
-    //     }
-    //     printf("\n");
-    // }
-    // printf("\n");
 
     mat_mul(nn->output, nn->layers[last_idx].input, nn->layers[last_idx].weights, nn->layers[last_idx].biases, m, nn->layers[last_idx].input_size, nn->output_size);
 
@@ -123,6 +110,8 @@ void backward_propagation(NeuralNetwork* nn, float* grad_in, int m) {
         if (i > 0 && nn->layers[i - 1].activation_function->activation_derivative != NULL) {
             nn->layers[i - 1].activation_function->activation_derivative(nn->layers[i].input, layer_grad, m, nn->layers[i].input_size);
         }
+        free(nn->layers[i].input);
+        nn->layers[i].input = NULL;
     }
     free(layer_grad);
 }
@@ -133,7 +122,6 @@ void free_neural_network(NeuralNetwork* nn) {
         free(nn->layers[i].biases);
         free(nn->layers[i].grad_weights);
         free(nn->layers[i].grad_biases);
-        free(nn->layers[i].input);
     }
     free(nn->layers);
     free(nn->output);
