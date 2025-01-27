@@ -22,7 +22,6 @@ void free_gaussian_policy(GaussianPolicy* policy) {
     free_neural_network(policy->mu);
     free(policy->log_std);
     free(policy->log_std_grad);
-    free(policy->input_action);
     free(policy);
 }
 

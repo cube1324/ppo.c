@@ -127,7 +127,7 @@ void test_nn(){
 
 int main() {
     // test_nn();
-
+    srand(time(NULL));
     Env* env = create_gym_env(0);
     // Env* env = create_simple_env(0);
 
@@ -136,7 +136,7 @@ int main() {
     
     ActivationFunction activation_functions[] = {{&ReLU, &ReLU_derivative}, {&ReLU, &ReLU_derivative}, {NULL, NULL}};
 
-    float lr = 3e-4;
+    float lr = 1e-3;
     int batch_size = 64;
     float gamma = 0.99;
     float lambda = 0.95;
@@ -147,7 +147,7 @@ int main() {
     int n_epochs_value = 10;
     int steps_per_epoch = 30000;
     int steps_per_fit = 3000;
-    int n_epochs = 30;
+    int n_epochs = 100;
 
     PPO* ppo = create_ppo(env, activation_functions, layer_sizes, num_layers, steps_per_fit, lr, lr, gamma, lambda, epsilon, ent_coeff, init_std);
 

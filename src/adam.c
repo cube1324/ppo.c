@@ -5,9 +5,13 @@ Adam* create_adam(float** weights, float** grad_weights, int* length, int num_la
     Adam* adam = (Adam*)malloc(sizeof(Adam));
     adam->m = (float*)calloc(size, sizeof(float));
     adam->v = (float*)calloc(size, sizeof(float));
-    adam->weights = weights;
-    adam->grad_weights = grad_weights;
-    adam->lengths = length;
+    adam->weights = malloc(num_layers * sizeof(float*));
+    adam->grad_weights = malloc(num_layers * sizeof(float*));
+    adam->lengths = malloc(num_layers * sizeof(int));
+    memcpy(adam->weights, weights, num_layers * sizeof(float*));
+    memcpy(adam->grad_weights, grad_weights, num_layers * sizeof(float*));
+    memcpy(adam->lengths, length, num_layers * sizeof(int));
+    
     adam->size = size;
     adam->beta1 = beta1;
     adam->beta2 = beta2;
@@ -17,9 +21,10 @@ Adam* create_adam(float** weights, float** grad_weights, int* length, int num_la
 }
 
 Adam* create_adam_from_nn(NeuralNetwork* nn, float beta1, float beta2) {
-    float** weights = (float**)malloc((nn->num_layers - 1) * 2 * sizeof(float*));
-    float** grad_weights = (float**)malloc((nn->num_layers - 1) * 2 * sizeof(float*));
-    int* length = (int*)malloc((nn->num_layers - 1) * 2 * sizeof(int));
+    float* weights[2 * nn->num_layers - 1];
+    float* grad_weights[2 * nn->num_layers - 1];
+    int length[2 * nn->num_layers - 1];
+
     int size = 0;
     for (int i = 0; i < nn->num_layers - 1; i++) {
         weights[i * 2] = nn->layers[i].weights;

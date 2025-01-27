@@ -11,9 +11,8 @@ PPO* create_ppo(Env* env, ActivationFunction* activation_functions, int* layer_s
     ppo->adam_policy = create_adam_from_nn(ppo->policy->mu, 0.9, 0.999);
     ppo->adam_V = create_adam_from_nn(ppo->V, 0.9, 0.999);
 
-    int* length = (int*)malloc(sizeof(int));
-    *length = 1;
-    ppo->adam_entropy = create_adam(&ppo->policy->log_std, &ppo->policy->log_std_grad, length, 1, 1,  0.9, 0.999);
+    int length = 1;
+    ppo->adam_entropy = create_adam(&ppo->policy->log_std, &ppo->policy->log_std_grad, &length, 1, 1,  0.9, 0.999);
     
     ppo->env = env;
     ppo->gamma = gamma;
@@ -26,12 +25,12 @@ PPO* create_ppo(Env* env, ActivationFunction* activation_functions, int* layer_s
 }
 
 void free_ppo(PPO* ppo) {
-    free_trajectory_buffer(ppo->buffer);
-    free_gaussian_policy(ppo->policy);
-    free_neural_network(ppo->V);
     free_adam(ppo->adam_policy);
     free_adam(ppo->adam_V);
     free_adam(ppo->adam_entropy);
+    free_trajectory_buffer(ppo->buffer);
+    free_gaussian_policy(ppo->policy);
+    free_neural_network(ppo->V);
     free(ppo);
 }
 
