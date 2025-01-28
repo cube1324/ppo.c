@@ -45,6 +45,8 @@ Env* create_simple_env(int seed) {
     env->reset_env = reset_simple_env;
     env->step_env = step_simple_env;
     env->free_env = free_simple_env;
+    env->horizon = 15;
+    env->gamma = 0.99;
     return env;
 }
 

@@ -8,7 +8,7 @@ void init_env(int id) {
 
     // Add the directory containing gym_env.py to the Python path
     PyObject *sys_path = PySys_GetObject("path");
-    PyObject *path = PyUnicode_DecodeFSDefault(".");
+    PyObject *path = PyUnicode_DecodeFSDefault("../scripts");
     PyList_Append(sys_path, path);
     Py_DECREF(path);
 
@@ -99,5 +99,7 @@ Env* create_gym_env(int id) {
     env->step_env = &step_env;
     env->state_size = 3;
     env->action_size = 1;
+    env->horizon = 200;
+    env->gamma = 0.99;
     return env;
 }

@@ -1,9 +1,9 @@
 #include "ppo.h"
 
-PPO* create_ppo(Env* env, ActivationFunction* activation_functions, int* layer_sizes, int num_layers, int buffer_size, float lr_policy, float lr_v, float gamma, float lambda, float epsilon, float ent_coeff, float init_std) {
+PPO* create_ppo(ActivationFunction* activation_functions, int* layer_sizes, int num_layers, int buffer_size, float lr_policy, float lr_v, float lambda, float epsilon, float ent_coeff, float init_std) {
 
     PPO* ppo = (PPO*)malloc(sizeof(PPO));
-    ppo->buffer = create_trajectory_buffer(buffer_size, env->state_size, env->action_size);
+    ppo->buffer = create_trajectory_buffer(buffer_size, layer_sizes[0], layer_sizes[num_layers - 1]);
     ppo->policy = create_gaussian_policy(layer_sizes, activation_functions, num_layers, init_std);
 
     int layer_sizes_v[num_layers];
@@ -17,8 +17,6 @@ PPO* create_ppo(Env* env, ActivationFunction* activation_functions, int* layer_s
     int length = 1;
     ppo->adam_entropy = create_adam(&ppo->policy->log_std, &ppo->policy->log_std_grad, &length, 1, 1,  0.9, 0.999);
     
-    ppo->env = env;
-    ppo->gamma = gamma;
     ppo->lambda = lambda;
     ppo->epsilon = epsilon;
     ppo->ent_coeff = ent_coeff;
@@ -70,8 +68,6 @@ float policy_loss_and_grad(float* grad_logprob, float* grad_entropy, float* adv,
     
     float loss = 0;
 
-    // float ration[m];
-    // float clipped_ratio[m];
     float ratio;
     float clipped_ratio;
 
@@ -86,13 +82,6 @@ float policy_loss_and_grad(float* grad_logprob, float* grad_entropy, float* adv,
 
         grad_logprob[i] = -(adv_pos * !ratio_pos + !adv_pos * !ratio_neg) * adv[i] * ratio / m;
 
-        // printf("Grad: %f\n", grad_logprob[i]);
-
-        // clipped_ratio = clamp(ratio, 1 - epsilon, 1 + epsilon);
-
-        // loss -= minf(ratio * adv[i], clipped_ratio * adv[i]);
-
-        // grad[i] = -minf(1 / clipped_ratio, 1) * adv[i];
     }
     loss /= m;
 
@@ -106,12 +95,6 @@ float policy_loss_and_grad(float* grad_logprob, float* grad_entropy, float* adv,
 
 void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float lambda) {
     int limit = buffer->full ? buffer->capacity : buffer->idx;
-    
-    float debug_rewars[limit];
-    memcpy(debug_rewars, buffer->reward_p, limit * sizeof(float));
-
-    float debug_actions[limit];
-    memcpy(debug_actions, buffer->action_p, limit * sizeof(float));
 
     float v_next[limit];
     forward_propagation(V, buffer->next_state_p, limit);
@@ -139,12 +122,6 @@ void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float 
         *buffer->adv_target(buffer, i) = v[i] + *buffer->advantage(buffer, i);
     }
 
-    float debug_targets[limit];
-    memcpy(debug_targets, buffer->adv_target_p, limit * sizeof(float));
-
-    float debug_adv[limit];
-    memcpy(debug_adv, buffer->advantage_p, limit * sizeof(float));
-
     float mean = sum / limit;
     
     float std = 0;
@@ -160,7 +137,7 @@ void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float 
 
 
 
-void train_ppo_epoch(PPO* ppo, int steps_per_epoch, int batch_size, int n_epochs_policy, int n_epochs_value) {
+void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, int n_epochs_policy, int n_epochs_value) {
     float states[batch_size * ppo->buffer->state_size];
     float actions[batch_size * ppo->buffer->action_size];
     float logprobs[batch_size];
@@ -177,13 +154,13 @@ void train_ppo_epoch(PPO* ppo, int steps_per_epoch, int batch_size, int n_epochs
     int num_batches_policy = ceilf(ppo->buffer->capacity / batch_size);
     int num_batches_value = ceilf(ppo->buffer->capacity / batch_size);
 
-    printf("ENtropy: %f\n", compute_entropy(ppo->policy));
+    printf("Entropy: %f\n", compute_entropy(ppo->policy));
 
     for (int i = 0; i < steps_per_epoch / ppo->buffer->capacity; i++) {
-        collect_trajectories(ppo->buffer, ppo->env, ppo->policy, ppo->buffer->capacity);
+        collect_trajectories(ppo->buffer, env, ppo->policy, ppo->buffer->capacity);
 
         // Compute advantages
-        compute_gae(ppo->V, ppo->buffer, ppo->gamma, ppo->lambda);
+        compute_gae(ppo->V, ppo->buffer, env->gamma, ppo->lambda);
 
         float v_loss = mean_squared_error(ppo->V->output, ppo->buffer->adv_target_p, ppo->buffer->capacity, 1);
 
@@ -194,14 +171,11 @@ void train_ppo_epoch(PPO* ppo, int steps_per_epoch, int batch_size, int n_epochs
 
             // Fit value function
             for (int k = 0; k < num_batches_value; k++) {
-                // sample_batch(ppo->buffer, batch_size, states, actions, logprobs_old, adv, adv_target);
                 get_batch(ppo->buffer, k, batch_size, states, actions, logprobs_old, adv, adv_target);
 
                 forward_propagation(ppo->V, states, batch_size);
 
                 float v_loss = mean_squared_error(ppo->V->output, adv_target, batch_size, 1);
-
-                // printf("loss: %f\n", v_loss);
 
                 mean_squared_error_derivative(v_loss_grad, ppo->V->output, adv_target, batch_size, 1);
                 
@@ -227,10 +201,6 @@ void train_ppo_epoch(PPO* ppo, int steps_per_epoch, int batch_size, int n_epochs
 
                 float policy_loss = policy_loss_and_grad(policy_loss_grad, &entropy_grad, adv, logprobs, logprobs_old, entropy, ppo->ent_coeff, ppo->epsilon, batch_size);
 
-                // printf("Policy loss: %f\n", policy_loss);
-
-                // printf("Policy loss: %f\n", policy_loss);
-
                 log_prob_backwards(ppo->policy, policy_loss_grad, mu_grad, ppo->policy->log_std_grad, batch_size);
 
                 backward_propagation(ppo->policy->mu, mu_grad, batch_size);
@@ -247,23 +217,27 @@ void train_ppo_epoch(PPO* ppo, int steps_per_epoch, int batch_size, int n_epochs
     }
 }
 
-void eval_ppo(PPO* ppo, int steps){
-    // TrajectoryBuffer* buffer = create_trajectory_buffer(steps, ppo->env->state_size, ppo->env->action_size);
+void eval_ppo(PPO* ppo, Env* env, int steps){
+    // Uses same Buffer, so cannot use more eval steps than step_size
     reset_buffer(ppo->buffer);
 
-    collect_trajectories(ppo->buffer, ppo->env, ppo->policy, steps);
+    collect_trajectories(ppo->buffer, env, ppo->policy, steps);
 
-    float episode_rewards = 0;
-    int n_episodes = 0;
-    float sum_rewards = 0;
-    for (int i = 0; i < steps; i++) {
-        episode_rewards += *ppo->buffer->reward(ppo->buffer, i);
+    float rewards = *ppo->buffer->reward(ppo->buffer, steps - 1);
+    float episode_J = *ppo->buffer->reward(ppo->buffer, steps - 1);
+    int n_episodes = 1;
+    float sum_J = 0;
+
+    for (int i = steps - 2; i >= 0; i--) {
+        rewards += *ppo->buffer->reward(ppo->buffer, i);
+        episode_J = *ppo->buffer->reward(ppo->buffer, i) + env->gamma * episode_J;
         if (*ppo->buffer->terminated(ppo->buffer, i) || *ppo->buffer->truncated(ppo->buffer, i)) {
             n_episodes++;
-            sum_rewards += episode_rewards;
-            episode_rewards = 0;
+            sum_J += episode_J;
+            episode_J = 0;
         }
     }
-    printf("Mean reward: %f %d\n", sum_rewards / n_episodes, n_episodes);
+
+    printf("J: %f R: %f Episodes: %d\n", sum_J / n_episodes, rewards / n_episodes, n_episodes);
     reset_buffer(ppo->buffer);
 }
