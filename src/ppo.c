@@ -6,7 +6,10 @@ PPO* create_ppo(Env* env, ActivationFunction* activation_functions, int* layer_s
     ppo->buffer = create_trajectory_buffer(buffer_size, env->state_size, env->action_size);
     ppo->policy = create_gaussian_policy(layer_sizes, activation_functions, num_layers, init_std);
 
-    // TODO Set last layer to 1
+    int layer_sizes_v[num_layers];
+    memcpy(layer_sizes_v, layer_sizes, (num_layers - 1) * sizeof(int));
+    layer_sizes_v[num_layers - 1] = 1;
+    
     ppo->V = create_neural_network(layer_sizes, activation_functions, num_layers);
     ppo->adam_policy = create_adam_from_nn(ppo->policy->mu, 0.9, 0.999);
     ppo->adam_V = create_adam_from_nn(ppo->V, 0.9, 0.999);
@@ -81,7 +84,7 @@ float policy_loss_and_grad(float* grad_logprob, float* grad_entropy, float* adv,
 
         loss -= adv[i] * (adv_pos * (ratio_pos * (1 + epsilon) + !ratio_pos * ratio) + !adv_pos * (ratio_neg * (1 - epsilon) + !ratio_neg * ratio)) ;
 
-        grad_logprob[i] = -(adv_pos * !ratio_pos * ratio + !adv_pos * !ratio_neg * ratio) * adv[i] / m;
+        grad_logprob[i] = -(adv_pos * !ratio_pos + !adv_pos * !ratio_neg) * adv[i] * ratio / m;
 
         // printf("Grad: %f\n", grad_logprob[i]);
 
@@ -171,8 +174,8 @@ void train_ppo_epoch(PPO* ppo, int steps_per_epoch, int batch_size, int n_epochs
 
     float entropy_grad;
 
-    int num_batches_policy = ceilf(ppo->buffer->capacity / batch_size) * n_epochs_policy;
-    int num_batches_value = ceilf(ppo->buffer->capacity / batch_size) * n_epochs_value;
+    int num_batches_policy = ceilf(ppo->buffer->capacity / batch_size);
+    int num_batches_value = ceilf(ppo->buffer->capacity / batch_size);
 
     printf("ENtropy: %f\n", compute_entropy(ppo->policy));
 
@@ -186,58 +189,60 @@ void train_ppo_epoch(PPO* ppo, int steps_per_epoch, int batch_size, int n_epochs
 
         // printf("V loss: %f\n", v_loss);
 
-        shuffle_buffer(ppo->buffer);
+        for (int j = 0; j < n_epochs_value; j++) {
+            shuffle_buffer(ppo->buffer);
 
-        // Fit value function
-        for (int j = 0; j < num_batches_value; j++) {
-            // sample_batch(ppo->buffer, batch_size, states, actions, logprobs_old, adv, adv_target);
-            get_batch(ppo->buffer, j, batch_size, states, actions, logprobs_old, adv, adv_target);
+            // Fit value function
+            for (int k = 0; k < num_batches_value; k++) {
+                // sample_batch(ppo->buffer, batch_size, states, actions, logprobs_old, adv, adv_target);
+                get_batch(ppo->buffer, k, batch_size, states, actions, logprobs_old, adv, adv_target);
 
-            forward_propagation(ppo->V, states, batch_size);
+                forward_propagation(ppo->V, states, batch_size);
 
-            float v_loss = mean_squared_error(ppo->V->output, adv_target, batch_size, 1);
+                float v_loss = mean_squared_error(ppo->V->output, adv_target, batch_size, 1);
 
-            // printf("loss: %f\n", v_loss);
+                // printf("loss: %f\n", v_loss);
 
-            mean_squared_error_derivative(v_loss_grad, ppo->V->output, adv_target, batch_size, 1);
-            
-            backward_propagation(ppo->V, v_loss_grad, batch_size);
+                mean_squared_error_derivative(v_loss_grad, ppo->V->output, adv_target, batch_size, 1);
+                
+                backward_propagation(ppo->V, v_loss_grad, batch_size);
 
-            adam_update(ppo->adam_V, ppo->lr_V);
+                adam_update(ppo->adam_V, ppo->lr_V);
+            }
         }
 
-        // adam_update(ppo->adam_V, ppo->lr_V);
+        for (int j = 0; j < n_epochs_policy; j++) {
+            shuffle_buffer(ppo->buffer);
 
-        // printf("VLOSS: %f\n", v_loss);
+            for (int k = 0; k < num_batches_policy; k++) {
 
-        for (int j = 0; j < num_batches_policy; j++) {
+                // sample_batch(ppo->buffer, batch_size, states, actions, logprobs_old, adv, adv_target);
+                get_batch(ppo->buffer, k, batch_size, states, actions, logprobs_old, adv, adv_target);
 
-            // sample_batch(ppo->buffer, batch_size, states, actions, logprobs_old, adv, adv_target);
-            get_batch(ppo->buffer, j, batch_size, states, actions, logprobs_old, adv, adv_target);
+                // Compute policy loss
+                // SETS VALUES FOR GRAD COMPUTATION
+                compute_log_prob(ppo->policy, logprobs, states, actions, batch_size);
 
-            // Compute policy loss
-            // SETS VALUES FOR GRAD COMPUTATION
-            compute_log_prob(ppo->policy, logprobs, states, actions, batch_size);
+                float entropy = compute_entropy(ppo->policy);
 
-            float entropy = compute_entropy(ppo->policy);
+                float policy_loss = policy_loss_and_grad(policy_loss_grad, &entropy_grad, adv, logprobs, logprobs_old, entropy, ppo->ent_coeff, ppo->epsilon, batch_size);
 
-            float policy_loss = policy_loss_and_grad(policy_loss_grad, &entropy_grad, adv, logprobs, logprobs_old, entropy, ppo->ent_coeff, ppo->epsilon, batch_size);
+                // printf("Policy loss: %f\n", policy_loss);
 
-            // printf("Policy loss: %f\n", policy_loss);
+                // printf("Policy loss: %f\n", policy_loss);
 
-            // printf("Policy loss: %f\n", policy_loss);
+                log_prob_backwards(ppo->policy, policy_loss_grad, mu_grad, ppo->policy->log_std_grad, batch_size);
 
-            log_prob_backwards(ppo->policy, policy_loss_grad, mu_grad, ppo->policy->log_std_grad, batch_size);
+                backward_propagation(ppo->policy->mu, mu_grad, batch_size);
 
-            backward_propagation(ppo->policy->mu, mu_grad, batch_size);
+                for (int i = 0; i < ppo->policy->action_size; i++) {
+                    ppo->policy->log_std_grad[i] += entropy_grad;
+                }
 
-            for (int i = 0; i < ppo->policy->action_size; i++) {
-                ppo->policy->log_std_grad[i] += entropy_grad;
+                adam_update(ppo->adam_entropy, ppo->lr_policy);
+
+                adam_update(ppo->adam_policy, ppo->lr_policy);
             }
-
-            adam_update(ppo->adam_entropy, ppo->lr_policy);
-
-            adam_update(ppo->adam_policy, ppo->lr_policy);
         }
     }
 }
