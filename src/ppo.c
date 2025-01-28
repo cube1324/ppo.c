@@ -63,7 +63,7 @@ void collect_trajectories(TrajectoryBuffer* buffer, Env* env, GaussianPolicy* po
 }
 
 
-float policy_loss_and_grad(float* grad_logprob, float* grad_entropy, float* adv, float* logprobs,  float* old_logprobs, float entropy, float ent_coeff, int epsilon, int m) {
+float policy_loss_and_grad(float* grad_logprob, float* grad_entropy, float* adv, float* logprobs,  float* old_logprobs, float entropy, float ent_coeff, float epsilon, int m) {
     
     float loss = 0;
 
@@ -82,6 +82,8 @@ float policy_loss_and_grad(float* grad_logprob, float* grad_entropy, float* adv,
         loss -= adv[i] * (adv_pos * (ratio_pos * (1 + epsilon) + !ratio_pos * ratio) + !adv_pos * (ratio_neg * (1 - epsilon) + !ratio_neg * ratio)) ;
 
         grad_logprob[i] = -(adv_pos * !ratio_pos * ratio + !adv_pos * !ratio_neg * ratio) * adv[i] / m;
+
+        // printf("Grad: %f\n", grad_logprob[i]);
 
         // clipped_ratio = clamp(ratio, 1 - epsilon, 1 + epsilon);
 

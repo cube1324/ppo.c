@@ -136,7 +136,7 @@ int main() {
     
     ActivationFunction activation_functions[] = {{&ReLU, &ReLU_derivative}, {&ReLU, &ReLU_derivative}, {NULL, NULL}};
 
-    float lr = 1e-3;
+    float lr = 3e-4;
     int batch_size = 64;
     float gamma = 0.99;
     float lambda = 0.95;
