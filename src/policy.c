@@ -43,7 +43,7 @@ void generate_gaussian_noise(float* out, int n) {
 }
 
 float _compute_log_prob(float* mu, float* log_std, float* action, int action_size) {
-    float logprob = -0.5 * action_size *  logf(2 * M_PI) ;
+    float logprob = -0.5 * action_size *  logf(2 * M_PI);
 
     for (int i = 0; i < action_size; i++){
         logprob -= log_std[i] + 0.5 * powf((action[i] - mu[i]) / expf(log_std[i]), 2);
@@ -81,9 +81,9 @@ void log_prob_backwards(GaussianPolicy* policy, float* grad_in, float* grad_mu, 
 
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < policy->action_size; j++) {
-            grad_mu[i * policy->action_size + j] = (policy->input_action[i * policy->action_size + j] - policy->mu->output[i * policy->action_size + j]) / expf(2 * policy->log_std[j]) * grad_in[i * policy->action_size + j];
+            grad_mu[i * policy->action_size + j] = (policy->input_action[i * policy->action_size + j] - policy->mu->output[i * policy->action_size + j]) * expf(-2 * policy->log_std[j]) * grad_in[i * policy->action_size + j];
 
-            grad_log_std[j] += (-1 + powf(policy->input_action[i * policy->action_size + j] - policy->mu->output[i * policy->action_size + j], 2) / expf(2 * policy->log_std[j])) * grad_in[i * policy->action_size + j];
+            grad_log_std[j] += (-1 + powf(policy->input_action[i * policy->action_size + j] - policy->mu->output[i * policy->action_size + j], 2) * expf(-2 * policy->log_std[j])) * grad_in[i * policy->action_size + j];
         }
     }
 }

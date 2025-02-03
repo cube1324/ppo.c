@@ -80,7 +80,7 @@ int main() {
     int batch_size = 64;
     float lambda = 0.95;
     float epsilon = 0.2;
-    float ent_coeff = 0.0;
+    float ent_coeff = 0.01;
     float init_std = 1.0;
     int n_epochs_policy = 4;
     int n_epochs_value = 10;
@@ -93,6 +93,7 @@ int main() {
     eval_ppo(ppo, env, 3000);
 
     for (int i = 0; i < n_epochs; i++) {
+        printf("Epoch %d ", i);
         train_ppo_epoch(ppo, env, steps_per_epoch, batch_size, n_epochs_policy, n_epochs_value);
         eval_ppo(ppo, env, 3000);
     }

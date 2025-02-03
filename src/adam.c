@@ -49,7 +49,7 @@ void free_adam(Adam* adam) {
 }
 
 void adam_update(Adam* adam, float lr) {
-    adam->time_step = 1;
+    adam->time_step += 1;
 
     float bias_correction1 = 1 - powf(adam->beta1, adam->time_step);
     float bias_correction2 = 1 - powf(adam->beta2, adam->time_step);

@@ -154,7 +154,6 @@ void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, in
     int num_batches_policy = ceilf(ppo->buffer->capacity / batch_size);
     int num_batches_value = ceilf(ppo->buffer->capacity / batch_size);
 
-    printf("Entropy: %f\n", compute_entropy(ppo->policy));
 
     for (int i = 0; i < steps_per_epoch / ppo->buffer->capacity; i++) {
         collect_trajectories(ppo->buffer, env, ppo->policy, ppo->buffer->capacity);
@@ -165,7 +164,7 @@ void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, in
         float v_loss = mean_squared_error(ppo->V->output, ppo->buffer->adv_target_p, ppo->buffer->capacity, 1);
 
         // printf("V loss: %f\n", v_loss);
-
+        float sum_v_loss = 0;
         for (int j = 0; j < n_epochs_value; j++) {
             shuffle_buffer(ppo->buffer);
 
@@ -177,6 +176,8 @@ void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, in
 
                 float v_loss = mean_squared_error(ppo->V->output, adv_target, batch_size, 1);
 
+                sum_v_loss += v_loss;
+
                 mean_squared_error_derivative(v_loss_grad, ppo->V->output, adv_target, batch_size, 1);
                 
                 backward_propagation(ppo->V, v_loss_grad, batch_size);
@@ -184,6 +185,8 @@ void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, in
                 adam_update(ppo->adam_V, ppo->lr_V);
             }
         }
+
+        float sum_log_std_grad = 0;
 
         for (int j = 0; j < n_epochs_policy; j++) {
             shuffle_buffer(ppo->buffer);
@@ -209,11 +212,17 @@ void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, in
                     ppo->policy->log_std_grad[i] += entropy_grad;
                 }
 
+                sum_log_std_grad += ppo->policy->log_std_grad[0];
+
                 adam_update(ppo->adam_entropy, ppo->lr_policy);
 
                 adam_update(ppo->adam_policy, ppo->lr_policy);
             }
         }
+        // printf("Log std grad: %f\n", sum_log_std_grad);
+
+        printf("Iteration %d V loss: %f Entropy: %f\n", i, sum_v_loss / (n_epochs_value * num_batches_value),  compute_entropy(ppo->policy));
+        // printf("Entropy: %f\n");
     }
 }
 
