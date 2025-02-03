@@ -1,25 +1,28 @@
 CC = gcc
 CFLAGS = -Wall -O2
-LDFLAGS = -lm
+LDFLAGS = -lm -lpython3.10
 
 SRCDIR = src
 OBJDIR = obj
 BINDIR = bin
-HEADERS = headers
+HEADERS = include
+HEADERS_PYTHON = $(PPO_PYTHON)/include/python3.10
+
+LINK_PYTHON = $(PPO_PYTHON)/lib
 
 SOURCES = $(wildcard $(SRCDIR)/*.c)
 OBJECTS = $(SOURCES:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
-EXECUTABLE = $(BINDIR)/neural_network_project
+EXECUTABLE = $(BINDIR)/ppo
 
 all: $(EXECUTABLE)
 
 $(EXECUTABLE): $(OBJECTS)
 	@mkdir -p $(BINDIR)
-	$(CC) $(CFLAGS) -I $(HEADERS) $(OBJECTS) -o $@ $(LDFLAGS)
+	$(CC) $(CFLAGS) -I $(HEADERS) -I $(HEADERS_PYTHON) -L $(LINK_PYTHON) $(OBJECTS) -o $@ $(LDFLAGS)
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.c
 	@mkdir -p $(OBJDIR)
-	$(CC) -I $(HEADERS) $(CFLAGS) -c $< -o $@
+	$(CC) -I $(HEADERS) -I $(HEADERS_PYTHON) -L $(LINK_PYTHON) $(CFLAGS) -c $< -o $@
 
 clean:
 	rm -rf $(OBJDIR) $(BINDIR)
