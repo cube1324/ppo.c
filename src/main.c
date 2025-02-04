@@ -20,7 +20,7 @@ void ReLU_derivative(float* x, float* grad, int m,  int n) {
 }
 
 void test_nn(){
-    srand(time(NULL));
+    srand(0);
 
     int input_size = 2;
     int output_size = 1;
@@ -80,7 +80,7 @@ int main() {
     int batch_size = 64;
     float lambda = 0.95;
     float epsilon = 0.2;
-    float ent_coeff = 0.01;
+    float ent_coeff = 0.0;
     float init_std = 1.0;
     int n_epochs_policy = 4;
     int n_epochs_value = 10;

@@ -11,6 +11,31 @@ PPO* create_ppo(ActivationFunction* activation_functions, int* layer_sizes, int 
     layer_sizes_v[num_layers - 1] = 1;
     
     ppo->V = create_neural_network(layer_sizes, activation_functions, num_layers);
+
+    for (int i = 0; i < num_layers - 1; i++) {
+        memcpy(ppo->V->layers[i].weights, ppo->policy->mu->layers[i].weights, ppo->V->layers[i].input_size * ppo->V->layers[i].output_size * sizeof(float));
+
+        memcpy(ppo->V->layers[i].biases, ppo->policy->mu->layers[i].biases, ppo->V->layers[i].output_size * sizeof(float));
+    }
+
+    printf("Weights and biases of ppo->V:\n");
+    for (int i = 0; i < num_layers - 1; i++) {
+        printf("Layer %d:\n", i);
+        printf("Weights:\n");
+        for (int j = 0; j < ppo->V->layers[i].output_size; j++) {
+            for (int k = 0; k < ppo->V->layers[i].input_size; k++) {
+                printf("%f ", ppo->V->layers[i].weights[j * ppo->V->layers[i].input_size + k]);
+            }
+            printf("eawd\n");
+        }
+        printf("Biases:\n");
+        for (int j = 0; j < ppo->V->layers[i].output_size; j++) {
+            printf("%f ", ppo->V->layers[i].biases[j]);
+        }
+        printf("\n");
+    }
+
+
     ppo->adam_policy = create_adam_from_nn(ppo->policy->mu, 0.9, 0.999);
     ppo->adam_V = create_adam_from_nn(ppo->V, 0.9, 0.999);
 

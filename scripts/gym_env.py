@@ -1,4 +1,7 @@
 import gymnasium
+import numpy as np
+
+np.random.seed(0)
 
 env = None
 
