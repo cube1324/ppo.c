@@ -28,6 +28,11 @@ void free_gaussian_policy(GaussianPolicy* policy) {
 
 void generate_gaussian_noise(float* out, int n) {
     // Box Muller Transform 
+    if (n == 1) {
+        out[0] = sqrtf(-2 * logf((float)rand() / RAND_MAX)) * cosf(2 * M_PI * (float)rand() / RAND_MAX);
+        return;
+    }
+
     for (int i = 0; i <= n / 2; i+= 2) {
         float u1 = (float)rand() / RAND_MAX;
         float u2 = (float)rand() / RAND_MAX;

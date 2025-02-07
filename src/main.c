@@ -66,7 +66,8 @@ void test_nn(){
 
 int main() {
     // test_nn();
-    srand(time(NULL));
+    srand(0);
+    // srand(time(NULL));
 
     Env* env = create_gym_env(0);
     // Env* env = create_simple_env(0);
