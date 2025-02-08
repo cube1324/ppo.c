@@ -66,7 +66,7 @@ void test_nn(){
 
 int main() {
     // test_nn();
-    srand(0);
+    srand(time(NULL));
     // srand(time(NULL));
 
     Env* env = create_gym_env(0);
@@ -94,8 +94,10 @@ int main() {
     eval_ppo(ppo, env, 3000);
 
     for (int i = 0; i < n_epochs; i++) {
+        clock_t tic = clock();
         train_ppo_epoch(ppo, env, steps_per_epoch, batch_size, n_epochs_policy, n_epochs_value);
-        printf("Epoch: %d Entropy: %f ", i, compute_entropy(ppo->policy));
+        clock_t toc = clock();
+        printf("Epoch: %d Entropy: %f Time %fs ", i, compute_entropy(ppo->policy), (double)(toc - tic) / CLOCKS_PER_SEC);
         eval_ppo(ppo, env, 3000);
     }
 
