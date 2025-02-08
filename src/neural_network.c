@@ -1,10 +1,31 @@
 
 #include "neural_network.h"
 
-NeuralNetwork* create_neural_network(int* layer_sizes, ActivationFunction* activation_functions, int num_layers) {
+ActivationFunction* build_activation_function(char* name) {
+    ActivationFunction* activation_function = (ActivationFunction*)malloc(sizeof(ActivationFunction));
+
+    if (strcmp(name, "relu") == 0) {
+        activation_function->activation = &ReLU;
+        activation_function->activation_derivative = &ReLU_derivative;
+    } else {
+        activation_function->activation = NULL;
+        activation_function->activation_derivative = NULL;
+    }
+
+    return activation_function;
+}
+
+
+NeuralNetwork* create_neural_network(int* layer_sizes, char** activation_functions, int num_layers) {
     NeuralNetwork* nn = (NeuralNetwork*)malloc(sizeof(NeuralNetwork));
     nn->num_layers = num_layers;
     nn->layers = (Layer*)malloc((num_layers - 1) * sizeof(Layer));
+    
+    nn->activation_functions = (char**)malloc((num_layers - 1) * sizeof(char*));
+    for (int i = 0; i < num_layers - 1; i++) {
+        nn->activation_functions[i] = strdup(activation_functions[i]);
+    }
+
 
     for (int i = 0; i < num_layers - 1; i++) {
         nn->layers[i].input_size = layer_sizes[i];
@@ -13,7 +34,7 @@ NeuralNetwork* create_neural_network(int* layer_sizes, ActivationFunction* activ
         nn->layers[i].biases = (float*)malloc(layer_sizes[i + 1] * sizeof(float));
         nn->layers[i].grad_weights = (float*)calloc(layer_sizes[i] * layer_sizes[i + 1], sizeof(float));
         nn->layers[i].grad_biases = (float*)calloc(layer_sizes[i + 1], sizeof(float));
-        nn->layers[i].activation_function = &activation_functions[i];
+        nn->layers[i].activation_function = build_activation_function(activation_functions[i]);
         nn->layers[i].input = NULL;
 
         // Initialize weights and biases, he init for hidden layers and xavier for output layer
@@ -122,8 +143,71 @@ void free_neural_network(NeuralNetwork* nn) {
         free(nn->layers[i].biases);
         free(nn->layers[i].grad_weights);
         free(nn->layers[i].grad_biases);
+        free(nn->layers[i].input);
+        free(nn->layers[i].activation_function);
     }
+
+    for (int i = 0; i < nn->num_layers - 1; i++) {
+        free(nn->activation_functions[i]);
+    }
+    free(nn->activation_functions);
+
     free(nn->layers);
     free(nn->output);
     free(nn);
+}
+
+void save_neural_network(NeuralNetwork* nn, FILE* file) {
+    fwrite(&nn->num_layers, sizeof(int), 1, file);
+    fwrite(&nn->output_size, sizeof(int), 1, file);
+
+    for (int i = 0; i < nn->num_layers - 1; i++) {
+        int length = strlen(nn->activation_functions[i]) + 1;
+        fwrite(&length, sizeof(int), 1, file);
+        fwrite(nn->activation_functions[i], sizeof(char), length, file);
+    }
+
+    for (int i = 0; i < nn->num_layers - 1; i++) {
+        fwrite(&nn->layers[i].input_size, sizeof(int), 1, file);
+        fwrite(&nn->layers[i].output_size, sizeof(int), 1, file);
+        fwrite(nn->layers[i].weights, sizeof(float), nn->layers[i].input_size * nn->layers[i].output_size, file);
+        fwrite(nn->layers[i].biases, sizeof(float), nn->layers[i].output_size, file);
+    }
+}
+
+
+NeuralNetwork* load_neural_network(FILE* file) {
+    NeuralNetwork* nn = (NeuralNetwork*)malloc(sizeof(NeuralNetwork));
+
+    fread(&nn->num_layers, sizeof(int), 1, file);
+    fread(&nn->output_size, sizeof(int), 1, file);
+
+    nn->layers = (Layer*)malloc((nn->num_layers - 1) * sizeof(Layer));
+
+    nn->activation_functions = (char**)malloc((nn->num_layers - 1) * sizeof(char*));
+    for (int i = 0; i < nn->num_layers - 1; i++) {
+        int length;
+        fread(&length, sizeof(int), 1, file);
+        nn->activation_functions[i] = (char*)malloc(length * sizeof(char));
+        fread(nn->activation_functions[i], sizeof(char), length, file);
+    }
+
+    for (int i = 0; i < nn->num_layers - 1; i++) {
+        fread(&nn->layers[i].input_size, sizeof(int), 1, file);
+        fread(&nn->layers[i].output_size, sizeof(int), 1, file);
+
+        nn->layers[i].weights = (float*)malloc(nn->layers[i].input_size * nn->layers[i].output_size * sizeof(float));
+        nn->layers[i].biases = (float*)malloc(nn->layers[i].output_size * sizeof(float));
+        nn->layers[i].grad_weights = (float*)calloc(nn->layers[i].input_size * nn->layers[i].output_size, sizeof(float));
+        nn->layers[i].grad_biases = (float*)calloc(nn->layers[i].output_size, sizeof(float));
+        nn->layers[i].activation_function = build_activation_function(nn->activation_functions[i]);
+        nn->layers[i].input = NULL;
+
+        fread(nn->layers[i].weights, sizeof(float), nn->layers[i].input_size * nn->layers[i].output_size, file);
+        fread(nn->layers[i].biases, sizeof(float), nn->layers[i].output_size, file);
+    }
+
+    nn->output = NULL;
+
+    return nn;
 }

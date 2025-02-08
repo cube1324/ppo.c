@@ -23,4 +23,7 @@ void free_adam(Adam* adam);
 
 void adam_update(Adam* adam, float lr);
 
+void save_adam(Adam* adam, FILE* file);
+Adam* load_adam(FILE* file, float** weights, float** grad_weights, int* length);
+Adam* load_adam_from_nn(FILE* file, NeuralNetwork* nn);
 #endif // ADAM_H

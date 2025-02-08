@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -O3
+CFLAGS = -Ofast
 LDFLAGS = -lm -lpython3.10
 
 SRCDIR = src

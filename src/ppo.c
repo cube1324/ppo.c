@@ -1,6 +1,6 @@
 #include "ppo.h"
 
-PPO* create_ppo(ActivationFunction* activation_functions, int* layer_sizes, int num_layers, int buffer_size, float lr_policy, float lr_v, float lambda, float epsilon, float ent_coeff, float init_std) {
+PPO* create_ppo(char** activation_functions, int* layer_sizes, int num_layers, int buffer_size, float lr_policy, float lr_v, float lambda, float epsilon, float ent_coeff, float init_std) {
 
     PPO* ppo = (PPO*)malloc(sizeof(PPO));
     ppo->buffer = create_trajectory_buffer(buffer_size, layer_sizes[0], layer_sizes[num_layers - 1]);
@@ -212,7 +212,7 @@ void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, in
             }
         }
 
-        // printf("Iteration %d V loss: %f Entropy: %f\n", i, sum_v_loss / (n_epochs_value * num_batches_value),  compute_entropy(ppo->policy));
+        printf("Iteration %d V loss: %f Entropy: %f\n", i, sum_v_loss / (n_epochs_value * num_batches_value),  compute_entropy(ppo->policy));
     }
 }
 
@@ -240,3 +240,73 @@ void eval_ppo(PPO* ppo, Env* env, int steps){
     printf("J: %f R: %f Episodes: %d\n", sum_J / n_episodes, rewards / n_episodes, n_episodes);
     reset_buffer(ppo->buffer);
 }
+
+void save_ppo(PPO* ppo, const char* filename) {
+    FILE* file = fopen(filename, "wb");
+
+    fwrite(&ppo->lambda, sizeof(float), 1, file);
+    fwrite(&ppo->epsilon, sizeof(float), 1, file);
+    fwrite(&ppo->ent_coeff, sizeof(float), 1, file);
+    fwrite(&ppo->lr_policy, sizeof(float), 1, file);
+    fwrite(&ppo->lr_V, sizeof(float), 1, file);
+
+    fwrite(&ppo->buffer->state_size, sizeof(int), 1, file);
+    fwrite(&ppo->buffer->action_size, sizeof(int), 1, file);
+    fwrite(&ppo->buffer->capacity, sizeof(int), 1, file);
+
+    fwrite(ppo->policy->log_std, sizeof(float), ppo->policy->action_size, file);
+
+    save_neural_network(ppo->policy->mu, file);
+    save_neural_network(ppo->V, file);
+
+    save_adam(ppo->adam_policy, file);
+    save_adam(ppo->adam_V, file);
+    save_adam(ppo->adam_entropy, file);
+
+    fclose(file);
+}
+
+
+PPO* load_ppo(const char* filename) {
+    FILE* file = fopen(filename, "rb");
+
+    PPO* ppo = (PPO*)malloc(sizeof(PPO));
+
+    fread(&ppo->lambda, sizeof(float), 1, file);
+    fread(&ppo->epsilon, sizeof(float), 1, file);
+    fread(&ppo->ent_coeff, sizeof(float), 1, file);
+    fread(&ppo->lr_policy, sizeof(float), 1, file);
+    fread(&ppo->lr_V, sizeof(float), 1, file);
+
+    int state_size;
+    int action_size;
+    int capacity;
+
+    fread(&state_size, sizeof(int), 1, file);
+    fread(&action_size, sizeof(int), 1, file);
+    fread(&capacity, sizeof(int), 1, file);
+
+    ppo->buffer = create_trajectory_buffer(capacity, state_size, action_size);
+
+    ppo->policy = (GaussianPolicy*)malloc(sizeof(GaussianPolicy));
+    ppo->policy->state_size = state_size;
+    ppo->policy->action_size = action_size;
+    ppo->policy->log_std = (float*)malloc(action_size * sizeof(float));
+    ppo->policy->log_std_grad = (float*)malloc(action_size * sizeof(float));
+
+    fread(ppo->policy->log_std, sizeof(float), action_size, file);
+    ppo->policy->mu = load_neural_network(file);
+    
+    ppo->policy->input_action = NULL;
+
+    ppo->V = load_neural_network(file);
+
+    ppo->adam_policy = load_adam_from_nn(file, ppo->policy->mu);
+    ppo->adam_V = load_adam_from_nn(file, ppo->V);
+    ppo->adam_entropy = load_adam(file, &ppo->policy->log_std, &ppo->policy->log_std_grad, &action_size);
+
+    fclose(file);
+
+    return ppo;
+}
+

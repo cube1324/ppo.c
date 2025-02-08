@@ -2,7 +2,7 @@
 #include "policy.h"
 
 
-GaussianPolicy* create_gaussian_policy(int* layer_sizes, ActivationFunction* activation_functions, int num_layers, float init_std) {
+GaussianPolicy* create_gaussian_policy(int* layer_sizes, char** activation_functions, int num_layers, float init_std) {
     GaussianPolicy* policy = (GaussianPolicy*)malloc(sizeof(GaussianPolicy));
     policy->state_size = layer_sizes[0];
     policy->action_size = layer_sizes[num_layers - 1];

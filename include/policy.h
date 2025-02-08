@@ -16,7 +16,7 @@ typedef struct {
     float* input_action;
 } GaussianPolicy;
 
-GaussianPolicy* create_gaussian_policy(int* layer_sizes, ActivationFunction* activation_functions, int num_layers, float init_std);
+GaussianPolicy* create_gaussian_policy(int* layer_sizes, char** activation_functions, int num_layers, float init_std);
 void free_gaussian_policy(GaussianPolicy* policy);
 
 void sample_action(GaussianPolicy* policy, float* state, float* action, float* log_prob, int m);

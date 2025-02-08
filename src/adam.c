@@ -70,3 +70,52 @@ void adam_update(Adam* adam, float lr) {
         }
     }
 }
+
+
+void save_adam(Adam* adam, FILE* file) {
+    fwrite(&adam->size, sizeof(int), 1, file);
+    fwrite(&adam->time_step, sizeof(int), 1, file);
+    fwrite(&adam->beta1, sizeof(float), 1, file);
+    fwrite(&adam->beta2, sizeof(float), 1, file);
+    fwrite(&adam->num_layers, sizeof(int), 1, file);
+    fwrite(adam->m, sizeof(float), adam->size, file);
+    fwrite(adam->v, sizeof(float), adam->size, file);
+}
+
+Adam* load_adam(FILE* file, float** weights, float** grad_weights, int* length) {
+    Adam* adam = (Adam*)malloc(sizeof(Adam));
+    fread(&adam->size, sizeof(int), 1, file);
+    fread(&adam->time_step, sizeof(int), 1, file);
+    fread(&adam->beta1, sizeof(float), 1, file);
+    fread(&adam->beta2, sizeof(float), 1, file);
+    fread(&adam->num_layers, sizeof(int), 1, file);
+    adam->m = (float*)malloc(adam->size * sizeof(float));
+    adam->v = (float*)malloc(adam->size * sizeof(float));
+    fread(adam->m, sizeof(float), adam->size, file);
+    fread(adam->v, sizeof(float), adam->size, file);
+
+    adam->weights = malloc(adam->num_layers * sizeof(float*));
+    adam->grad_weights = malloc(adam->num_layers * sizeof(float*));
+    adam->lengths = malloc(adam->num_layers * sizeof(int));
+
+    memcpy(adam->weights, weights, adam->num_layers * sizeof(float*));
+    memcpy(adam->grad_weights, grad_weights, adam->num_layers * sizeof(float*));
+    memcpy(adam->lengths, length, adam->num_layers * sizeof(int));
+    return adam;
+}
+
+Adam* load_adam_from_nn(FILE* file, NeuralNetwork* nn) {
+    float* weights[2 * nn->num_layers - 1];
+    float* grad_weights[2 * nn->num_layers - 1];
+    int length[2 * nn->num_layers - 1];
+
+    for (int i = 0; i < nn->num_layers - 1; i++) {
+        weights[i * 2] = nn->layers[i].weights;
+        weights[i * 2 + 1] = nn->layers[i].biases;
+        grad_weights[i * 2] = nn->layers[i].grad_weights;
+        grad_weights[i * 2 + 1] = nn->layers[i].grad_biases;
+        length[i * 2] = nn->layers[i].input_size * nn->layers[i].output_size;
+        length[i * 2 + 1] = nn->layers[i].output_size;
+    }
+    return load_adam(file, weights, grad_weights, length);
+}

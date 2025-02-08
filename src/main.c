@@ -7,18 +7,6 @@
 #include "gym_env.h"
 #include "env.h"
 
-void ReLU(float* x, int m, int n) {
-    for (int i = 0; i < m * n; i++) {
-        x[i] = x[i] > 0 ? x[i] : 0;
-    }
-}
-
-void ReLU_derivative(float* x, float* grad, int m,  int n) {
-    for (int i = 0; i < m * n; i++) {
-        grad[i] = x[i] > 0 ? grad[i] : 0;
-    }
-}
-
 void test_nn(){
     srand(0);
 
@@ -40,7 +28,8 @@ void test_nn(){
 
     float y_true[] = {0.0, 1.0, 1.0, 0.0};
 
-    ActivationFunction activation_functions[] = {{&ReLU, &ReLU_derivative}, {&ReLU, &ReLU_derivative}, {NULL, NULL}};
+    char* activation_functions[] = {"ReLU", "ReLU", "None"};
+
     NeuralNetwork* nn = create_neural_network(layer_sizes, activation_functions, num_layers);
 
     Adam* adam = create_adam_from_nn(nn, 0.9, 0.999);
@@ -64,6 +53,50 @@ void test_nn(){
     free(lossf);
 }
 
+bool compare_arrays(float* arr1, float* arr2, int size) {
+    for (int i = 0; i < size; i++) {
+        if (arr1[i] != arr2[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool compare_ppo(PPO* ppo, PPO* new_ppo) {
+    if (ppo->lambda != new_ppo->lambda) return false;
+    if (ppo->epsilon != new_ppo->epsilon) return false;
+    if (ppo->ent_coeff != new_ppo->ent_coeff) return false;
+    if (ppo->lr_policy != new_ppo->lr_policy) return false;
+    if (ppo->lr_V != new_ppo->lr_V) return false;
+
+    // Compare buffer
+    if (ppo->buffer->capacity != new_ppo->buffer->capacity) return false;
+    if (ppo->buffer->state_size != new_ppo->buffer->state_size) return false;
+    if (ppo->buffer->action_size != new_ppo->buffer->action_size) return false;
+    // if (!compare_arrays(ppo->buffer->state_p, new_ppo->buffer->state_p, ppo->buffer->capacity * ppo->buffer->state_size)) return false;
+    // if (!compare_arrays(ppo->buffer->action_p, new_ppo->buffer->action_p, ppo->buffer->capacity * ppo->buffer->action_size)) return false;
+
+    // Compare policy
+    if (ppo->policy->state_size != new_ppo->policy->state_size) return false;
+    if (ppo->policy->action_size != new_ppo->policy->action_size) return false;
+    if (!compare_arrays(ppo->policy->log_std, new_ppo->policy->log_std, ppo->policy->action_size)) return false;
+
+    // Compare neural network V
+    for (int i = 0; i < ppo->V->num_layers; i++) {
+        if (!compare_arrays(ppo->V->layers[i].weights, new_ppo->V->layers[i].weights, ppo->V->layers[i].input_size * ppo->V->layers[i].output_size)) return false;
+        if (!compare_arrays(ppo->V->layers[i].biases, new_ppo->V->layers[i].biases, ppo->V->layers[i].output_size)) return false;
+    }
+
+    // Compare Adam optimizers
+    if (ppo->adam_policy->beta1 != new_ppo->adam_policy->beta1) return false;
+    if (ppo->adam_policy->beta2 != new_ppo->adam_policy->beta2) return false;
+    if (ppo->adam_policy->time_step != new_ppo->adam_policy->time_step) return false;
+    if (!compare_arrays(ppo->adam_policy->m, new_ppo->adam_policy->m, ppo->adam_policy->size)) return false;
+    if (!compare_arrays(ppo->adam_policy->v, new_ppo->adam_policy->v, ppo->adam_policy->size)) return false;
+
+    return true;
+}
+
 int main() {
     // test_nn();
     srand(time(NULL));
@@ -75,7 +108,8 @@ int main() {
     int layer_sizes[] = {env->state_size, 32, 32, env->action_size};
     int num_layers = 4;
     
-    ActivationFunction activation_functions[] = {{&ReLU, &ReLU_derivative}, {&ReLU, &ReLU_derivative}, {NULL, NULL}};
+    // ActivationFunction activation_functions[] = {{&ReLU, &ReLU_derivative}, {&ReLU, &ReLU_derivative}, {NULL, NULL}};
+    char* activation_functions[] = {"relu", "relu", "None"};
 
     float lr = 3e-4;
     int batch_size = 64;
@@ -100,6 +134,8 @@ int main() {
         printf("Epoch: %d Entropy: %f Time %fs ", i, compute_entropy(ppo->policy), (double)(toc - tic) / CLOCKS_PER_SEC);
         eval_ppo(ppo, env, 3000);
     }
+
+    save_ppo(ppo, "ppo_model.bin");
 
     env->free_env();
     free(env);
