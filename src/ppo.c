@@ -12,30 +12,6 @@ PPO* create_ppo(ActivationFunction* activation_functions, int* layer_sizes, int 
     
     ppo->V = create_neural_network(layer_sizes, activation_functions, num_layers);
 
-    for (int i = 0; i < num_layers - 1; i++) {
-        memcpy(ppo->V->layers[i].weights, ppo->policy->mu->layers[i].weights, ppo->V->layers[i].input_size * ppo->V->layers[i].output_size * sizeof(float));
-
-        memcpy(ppo->V->layers[i].biases, ppo->policy->mu->layers[i].biases, ppo->V->layers[i].output_size * sizeof(float));
-    }
-
-    printf("Weights and biases of ppo->V:\n");
-    for (int i = 0; i < num_layers - 1; i++) {
-        printf("Layer %d:\n", i);
-        printf("Weights:\n");
-        for (int j = 0; j < ppo->V->layers[i].output_size; j++) {
-            for (int k = 0; k < ppo->V->layers[i].input_size; k++) {
-                printf("%f ", ppo->V->layers[i].weights[j * ppo->V->layers[i].input_size + k]);
-            }
-            printf("eawd\n");
-        }
-        printf("Biases:\n");
-        for (int j = 0; j < ppo->V->layers[i].output_size; j++) {
-            printf("%f ", ppo->V->layers[i].biases[j]);
-        }
-        printf("\n");
-    }
-
-
     ppo->adam_policy = create_adam_from_nn(ppo->policy->mu, 0.9, 0.999);
     ppo->adam_V = create_adam_from_nn(ppo->V, 0.9, 0.999);
 
@@ -114,7 +90,6 @@ float policy_loss_and_grad(float* grad_logprob, float* grad_entropy, float* adv,
     *grad_entropy = -ent_coeff;
 
     return loss;
-
 }
 
 
@@ -186,9 +161,6 @@ void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, in
         // Compute advantages
         compute_gae(ppo->V, ppo->buffer, env->gamma, ppo->lambda);
 
-        float v_loss = mean_squared_error(ppo->V->output, ppo->buffer->adv_target_p, ppo->buffer->capacity, 1);
-
-        // printf("V loss: %f\n", v_loss);
         float sum_v_loss = 0;
         for (int j = 0; j < n_epochs_value; j++) {
             shuffle_buffer(ppo->buffer);
@@ -211,14 +183,11 @@ void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, in
             }
         }
 
-        float sum_log_std_grad = 0;
-
         for (int j = 0; j < n_epochs_policy; j++) {
             shuffle_buffer(ppo->buffer);
 
             for (int k = 0; k < num_batches_policy; k++) {
 
-                // sample_batch(ppo->buffer, batch_size, states, actions, logprobs_old, adv, adv_target);
                 get_batch(ppo->buffer, k, batch_size, states, actions, logprobs_old, adv, adv_target);
 
                 // Compute policy loss
@@ -237,17 +206,13 @@ void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, in
                     ppo->policy->log_std_grad[i] += entropy_grad;
                 }
 
-                sum_log_std_grad += ppo->policy->log_std_grad[0];
-
                 adam_update(ppo->adam_entropy, ppo->lr_policy);
 
                 adam_update(ppo->adam_policy, ppo->lr_policy);
             }
         }
-        // printf("Log std grad: %f\n", sum_log_std_grad);
 
-        printf("Iteration %d V loss: %f Entropy: %f\n", i, sum_v_loss / (n_epochs_value * num_batches_value),  compute_entropy(ppo->policy));
-        // printf("Entropy: %f\n");
+        // printf("Iteration %d V loss: %f Entropy: %f\n", i, sum_v_loss / (n_epochs_value * num_batches_value),  compute_entropy(ppo->policy));
     }
 }
 

@@ -59,7 +59,7 @@ float _compute_log_prob(float* mu, float* log_std, float* action, int action_siz
 void sample_action(GaussianPolicy* policy, float* state, float* action, float* log_prob, int m) {
     forward_propagation(policy->mu, state, m);
 
-    float* noise = (float*)malloc(m * policy->action_size * sizeof(float));
+    float noise[m * policy->action_size];
     generate_gaussian_noise(noise, m * policy->action_size);
 
     for (int i = 0; i < m; i++) {
@@ -68,7 +68,6 @@ void sample_action(GaussianPolicy* policy, float* state, float* action, float* l
         }
         log_prob[i] = _compute_log_prob(policy->mu->output + i * policy->action_size, policy->log_std, action + i * policy->action_size, policy->action_size);
     }
-    free(noise);
 }
 
 void compute_log_prob(GaussianPolicy* policy, float* out, float* state, float* action, int m) {

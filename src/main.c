@@ -87,15 +87,15 @@ int main() {
     int n_epochs_value = 10;
     int steps_per_epoch = 30000;
     int steps_per_fit = 3000;
-    int n_epochs = 100;
+    int n_epochs = 10;
 
     PPO* ppo = create_ppo(activation_functions, layer_sizes, num_layers, steps_per_fit, lr, lr, lambda, epsilon, ent_coeff, init_std);
 
     eval_ppo(ppo, env, 3000);
 
     for (int i = 0; i < n_epochs; i++) {
-        printf("Epoch %d ", i);
         train_ppo_epoch(ppo, env, steps_per_epoch, batch_size, n_epochs_policy, n_epochs_value);
+        printf("Epoch: %d Entropy: %f ", i, compute_entropy(ppo->policy));
         eval_ppo(ppo, env, 3000);
     }
 
