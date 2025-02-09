@@ -15,8 +15,7 @@ PPO* create_ppo(char** activation_functions, int* layer_sizes, int num_layers, i
     ppo->adam_policy = create_adam_from_nn(ppo->policy->mu, 0.9, 0.999);
     ppo->adam_V = create_adam_from_nn(ppo->V, 0.9, 0.999);
 
-    int length = 1;
-    ppo->adam_entropy = create_adam(&ppo->policy->log_std, &ppo->policy->log_std_grad, &length, 1, 1,  0.9, 0.999);
+    ppo->adam_entropy = create_adam(&ppo->policy->log_std, &ppo->policy->log_std_grad, &ppo->policy->action_size, 1, ppo->policy->action_size,  0.9, 0.999);
     
     ppo->lambda = lambda;
     ppo->epsilon = epsilon;
@@ -212,7 +211,7 @@ void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, in
             }
         }
 
-        printf("Iteration %d V loss: %f Entropy: %f\n", i, sum_v_loss / (n_epochs_value * num_batches_value),  compute_entropy(ppo->policy));
+        // printf("Iteration %d V loss: %f Entropy: %f\n", i, sum_v_loss / (n_epochs_value * num_batches_value),  compute_entropy(ppo->policy));
     }
 }
 
