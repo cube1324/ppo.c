@@ -3,10 +3,16 @@ import numpy as np
 
 env = None
 
-def init_env(id):
+def init_env(id, seed):
     global env
-    env = gymnasium.make("Pendulum-v1")
-    env.reset(seed=0)
+    if id == 0:
+        env = gymnasium.make("Pendulum-v1")
+        env.reset(seed=seed)
+
+    action_size = env.action_space.shape[0]
+    state_size = env.observation_space.shape[0]
+    horizon = env.spec.max_episode_steps
+    return action_size, state_size, horizon
 
 def reset_env():
     obs, _ = env.reset()
@@ -18,7 +24,7 @@ def step_env(action):
 
 
 if __name__ == "__main__":
-    init_env(0)
+    init_env(0, 0)
 
     obs = reset_env()
     print(obs)

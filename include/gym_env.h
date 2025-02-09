@@ -5,7 +5,7 @@
 #include <Python.h>
 #include <stdbool.h>
 
-Env* create_gym_env(int id);
+Env* create_gym_env(int id, int seed);
 
 
 #endif // GYM_ENV_H

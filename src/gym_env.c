@@ -2,7 +2,7 @@
 
 PyObject* pModule;
 
-void init_env(int id) {
+void init_env(int id, int seed, int* action_size, int* state_size, int* horizon) {
 
     Py_Initialize();
 
@@ -19,8 +19,16 @@ void init_env(int id) {
     if (pModule != NULL) {
         PyObject *pFunc = PyObject_GetAttrString(pModule, "init_env");
         if (PyCallable_Check(pFunc)) {
-            PyObject *pArgs = PyTuple_Pack(1, PyLong_FromLong(id));
+            PyObject *pArgs = PyTuple_Pack(2, PyLong_FromLong(id), PyLong_FromLong(seed));
             PyObject *pValue = PyObject_CallObject(pFunc, pArgs);
+
+            if (PyTuple_Check(pValue) && PyTuple_Size(pValue) == 3) {
+                *action_size = PyLong_AsLong(PyTuple_GetItem(pValue, 0));
+                *state_size = PyLong_AsLong(PyTuple_GetItem(pValue, 1));
+                *horizon = PyLong_AsLong(PyTuple_GetItem(pValue, 2));
+            }
+            Py_DECREF(pValue);
+
             Py_DECREF(pArgs);
 
         } else {
@@ -91,15 +99,12 @@ void step_env(float* action, float* obs, float* reward, bool* terminated, bool* 
 }
 
 
-Env* create_gym_env(int id) {
-    init_env(id);
+Env* create_gym_env(int id, int seed) {
     Env* env = (Env*)malloc(sizeof(Env));
+    init_env(id, seed, &env->action_size, &env->state_size, &env->horizon);
     env->free_env = &free_env;
     env->reset_env = &reset_env;
     env->step_env = &step_env;
-    env->state_size = 3;
-    env->action_size = 1;
-    env->horizon = 200;
     env->gamma = 0.99;
     return env;
 }

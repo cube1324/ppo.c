@@ -38,7 +38,7 @@ void free_simple_env() {
 
 
 
-Env* create_simple_env(int seed) {
+Env* create_simple_env(int id, int seed) {
     Env* env = (Env*)malloc(sizeof(Env));
     env->state_size = 1;
     env->action_size = 1;

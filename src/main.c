@@ -99,17 +99,17 @@ bool compare_ppo(PPO* ppo, PPO* new_ppo) {
 
 int main() {
     // test_nn();
-    srand(time(NULL));
+    int seed = time(NULL);
+    srand(seed);
     // srand(time(NULL));
 
-    Env* env = create_gym_env(0);
-    // Env* env = create_simple_env(0);
+    Env* env = create_gym_env(0, seed);
+    // Env* env = create_simple_env(0, seed);
 
     int layer_sizes[] = {env->state_size, 32, 32, env->action_size};
     int num_layers = 4;
     
-    // ActivationFunction activation_functions[] = {{&ReLU, &ReLU_derivative}, {&ReLU, &ReLU_derivative}, {NULL, NULL}};
-    char* activation_functions[] = {"relu", "relu", "None"};
+    char* activation_functions[] = {"relu", "relu", "none"};
 
     float lr = 3e-4;
     int batch_size = 64;
