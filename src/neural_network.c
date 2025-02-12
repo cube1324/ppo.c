@@ -40,11 +40,10 @@ NeuralNetwork* create_neural_network(int* layer_sizes, char** activation_functio
         // Initialize weights and biases, he init for hidden layers and xavier for output layer
         float gain = i == num_layers - 2 ? 1 : sqrtf(2.0); 
 
+        float std = gain * sqrtf(2.0 / (layer_sizes[i] + layer_sizes[i + 1]));
+        
         for (int j = 0; j < layer_sizes[i] * layer_sizes[i + 1]; j++) {
-            for (int j = 0; j < layer_sizes[i] * layer_sizes[i + 1]; j++) {
-                float std = gain * sqrtf(2.0 / (layer_sizes[i] + layer_sizes[i + 1]));
-                nn->layers[i].weights[j] = (2 * (float)rand() / RAND_MAX - 1) * sqrtf(3.0) * std;
-            }
+            nn->layers[i].weights[j] = (2 * (float)rand() / RAND_MAX - 1) * sqrtf(3.0) * std;
         }
 
         for (int j = 0; j < layer_sizes[i + 1]; j++) {
