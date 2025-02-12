@@ -106,7 +106,7 @@ int main() {
     Env* env = create_gym_env(0, seed);
     // Env* env = create_simple_env(0, seed);
 
-    int layer_sizes[] = {env->state_size, 32, 32, env->action_size};
+    int layer_sizes[] = {env->state_size, 128, 128, env->action_size};
     int num_layers = 4;
     
     char* activation_functions[] = {"relu", "relu", "none"};

@@ -1,6 +1,6 @@
 CC = gcc
-CFLAGS = -Ofast
-LDFLAGS = -lm -lpython3.10
+CFLAGS = -Ofast -fopenmp
+LDFLAGS = -lm -lpython3.10 -lopenblas
 
 SRCDIR = src
 OBJDIR = obj
