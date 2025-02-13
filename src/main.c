@@ -60,6 +60,8 @@ int main(int argc, char** argv) {
     srand(seed);
     srand(time(NULL));
 
+    openblas_set_num_threads(1);
+
     int net_size = 128;
     if (argc > 1) {
         net_size = atoi(argv[1]);
