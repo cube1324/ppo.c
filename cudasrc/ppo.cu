@@ -119,7 +119,13 @@ __global__ void gae_compute_block_advantage_kernel(float* advantage, float* delt
 
     for (int stride = 1; stride < blockDim.x; stride *= 2) {
         float temp = 0.0f;
-        if ()
+        if (tid >= stride) {
+            temp = powf(gamma, stride) * shared_sum[blockDim.x - (tid - stride) - 1];
+        }
+        __syncthreads();
+        
+        shared_sum[tid] += temp;
+        
         __syncthreads();
     }
 }
