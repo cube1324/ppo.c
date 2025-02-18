@@ -1,5 +1,9 @@
 #include "ppo.h"
 
+#include "cuda_helper.hu"
+
+#define BLOCK_SIZE 1024
+
 PPO* create_ppo(char** activation_functions, int* layer_sizes, int num_layers, int buffer_size, float lr_policy, float lr_v, float lambda, float epsilon, float ent_coeff, float init_std) {
 
     PPO* ppo = (PPO*)malloc(sizeof(PPO));
@@ -37,24 +41,24 @@ void free_ppo(PPO* ppo) {
 
 
 void collect_trajectories(TrajectoryBuffer* buffer, Env* env, GaussianPolicy* policy, int steps) {
-    env->reset_env(buffer->state(buffer, buffer->idx));
+    env->reset_env(buffer->state_p + buffer->idx * buffer->state_size);
 
     for (int i = 0; i < steps; i++) {
-        sample_action(policy, buffer->state(buffer, buffer->idx), buffer->action(buffer, buffer->idx), buffer->logprob(buffer, buffer->idx), 1);
+        sample_action(policy, buffer->state_p + buffer->idx * buffer->state_size, buffer->action_p + buffer->idx * buffer->action_size, buffer->logprob_p + buffer->idx, 1);
 
-        env->step_env(buffer->action(buffer, buffer->idx), buffer->next_state(buffer, buffer->idx), buffer->reward(buffer, buffer->idx), buffer->terminated(buffer, buffer->idx), buffer->truncated(buffer, buffer->idx), buffer->action_size);
+        env->step_env(buffer->action_p + buffer->idx * buffer->action_size, buffer->next_state_p + buffer->idx * buffer->state_size, buffer->reward_p + buffer->idx, buffer->terminated_p + buffer->idx, buffer->truncated_p + buffer->idx, buffer->action_size);
 
         int new_idx = (buffer->idx + 1) % buffer->capacity;
 
         if (i < steps - 1) {
-            if (*buffer->truncated(buffer, buffer->idx) || *buffer->terminated(buffer, buffer->idx)) {
-                env->reset_env(buffer->state(buffer, new_idx));
+            if (*(buffer->truncated_p + buffer->idx) || *(buffer->terminated_p + buffer->idx)) {
+                env->reset_env(buffer->state_p + new_idx * buffer->state_size);
             } else {
-                memcpy(buffer->state(buffer, new_idx), buffer->next_state(buffer, buffer->idx), buffer->state_size * sizeof(float));
+                memcpy(buffer->state_p + new_idx * buffer->state_size, buffer->next_state_p + buffer->idx * buffer->state_size, buffer->state_size * sizeof(float));
             }
         } else {
-            if (!*buffer->terminated(buffer, buffer->idx)) {
-                *buffer->truncated(buffer, buffer->idx) = true;
+            if (!*(buffer->terminated_p + buffer->idx)) {
+                *(buffer->truncated_p + buffer->idx) = true;
             }
         }
 
@@ -92,22 +96,70 @@ float policy_loss_and_grad(float* grad_logprob, float* grad_entropy, float* adv,
 }
 
 
+__global__ void gae_compute_delta_kernel(float* delta, float* v, float* v_next, bool* terminated, float* reward, float gamma, int n){
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) {
+        delta[idx] = reward[idx] + gamma * v_next[idx] * !terminated[idx] - v[idx];
+    }
+}
+
+__global__ void gae_compute_block_advantage_kernel(float* advantage, float* delta, bool* terminated, float* adv_target, float gamma, float lambda, int n) {
+    __shared__ float shared_sum[blockDim.x];
+
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int tid = threadIdx.x;
+    
+    if (idx < n) {
+        shared_sum[threadIdx.x] = delta[idx];
+    } else {
+        shared_sum[threadIdx.x] = 0.0f;
+    }
+
+    __syncthreads();
+
+    for (int stride = 1; stride < blockDim.x; stride *= 2) {
+        float temp = 0.0f;
+        if ()
+        __syncthreads();
+    }
+}
+
+
 void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float lambda) {
     int limit = buffer->full ? buffer->capacity : buffer->idx;
 
     float v_next[limit];
     forward_propagation(V, buffer->next_state_p, limit);
-    memcpy(v_next, V->output, limit * sizeof(float));
-    
+    memccpy(v_next, V->output, limit, sizeof(float));
+
     float v[limit];
     forward_propagation(V, buffer->state_p, limit);
-    memcpy(v, V->output, limit * sizeof(float));
+    memccpy(v, V->output, limit, sizeof(float));
 
-    float delta[limit];
+    // float* v_next;
+    // cudaErrorCheck(cudaMalloc(&v_next, limit * sizeof(float)));
 
-    for (int i = 0; i < limit; i++) {
-        delta[i] = *buffer->reward(buffer, i) + gamma * v_next[i] * !*buffer->terminated(buffer, i) - v[i];
-    }
+    // forward_propagation(V, buffer->next_state_p, limit);
+    // cudaErrorCheck(cudaMemcpy(v_next, V->output, limit * sizeof(float), cudaMemcpyDeviceToDevice));
+    
+    // float* v;
+    // cudaErrorCheck(cudaMalloc(&v, limit * sizeof(float)));
+
+    // forward_propagation(V, buffer->state_p, limit);    
+    // cudaErrorCheck(cudaMemcpy(v, V->output, limit * sizeof(float), cudaMemcpyDeviceToDevice));
+
+    buffer_to_device(buffer);
+
+    float* delta;
+    cudaErrorCheck(cudaMalloc(&delta, limit * sizeof(float)));
+
+    gae_compute_delta_kernel<<<(limit + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(delta, v, v_next, buffer->d_terminated_p, buffer->d_reward_p, gamma, limit);
+
+
+
+    // for (int i = 0; i < limit; i++) {
+    //     delta[i] = *buffer->reward(buffer, i) + gamma * v_next[i] * !*buffer->terminated(buffer, i) - v[i];
+    // }
 
     float sum = 0;
     for (int i = limit - 1; i >= 0; i--) {
