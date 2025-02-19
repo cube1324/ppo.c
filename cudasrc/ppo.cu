@@ -41,24 +41,24 @@ void free_ppo(PPO* ppo) {
 
 
 void collect_trajectories(TrajectoryBuffer* buffer, Env* env, GaussianPolicy* policy, int steps) {
-    env->reset_env(buffer->state_p + buffer->idx * buffer->state_size);
+    env->reset_env(buffer->state(buffer, buffer->idx));
 
     for (int i = 0; i < steps; i++) {
-        sample_action(policy, buffer->state_p + buffer->idx * buffer->state_size, buffer->action_p + buffer->idx * buffer->action_size, buffer->logprob_p + buffer->idx, 1);
+        sample_action(policy, buffer->state(buffer, buffer->idx), buffer->action(buffer, buffer->idx), buffer->logprob(buffer, buffer->idx), 1);
 
-        env->step_env(buffer->action_p + buffer->idx * buffer->action_size, buffer->next_state_p + buffer->idx * buffer->state_size, buffer->reward_p + buffer->idx, buffer->terminated_p + buffer->idx, buffer->truncated_p + buffer->idx, buffer->action_size);
+        env->step_env(buffer->action(buffer, buffer->idx), buffer->next_state(buffer, buffer->idx), buffer->reward(buffer, buffer->idx), buffer->terminated(buffer, buffer->idx), buffer->truncated(buffer, buffer->idx), buffer->action_size);
 
         int new_idx = (buffer->idx + 1) % buffer->capacity;
 
         if (i < steps - 1) {
-            if (*(buffer->truncated_p + buffer->idx) || *(buffer->terminated_p + buffer->idx)) {
-                env->reset_env(buffer->state_p + new_idx * buffer->state_size);
+            if (*buffer->truncated(buffer, buffer->idx) || *buffer->terminated(buffer, buffer->idx)) {
+                env->reset_env(buffer->state(buffer, new_idx));
             } else {
-                memcpy(buffer->state_p + new_idx * buffer->state_size, buffer->next_state_p + buffer->idx * buffer->state_size, buffer->state_size * sizeof(float));
+                memcpy(buffer->state(buffer, new_idx), buffer->next_state(buffer, buffer->idx), buffer->state_size * sizeof(float));
             }
         } else {
-            if (!*(buffer->terminated_p + buffer->idx)) {
-                *(buffer->truncated_p + buffer->idx) = true;
+            if (!*buffer->terminated(buffer, buffer->idx)) {
+                *buffer->truncated(buffer, buffer->idx) = true;
             }
         }
 
@@ -95,7 +95,7 @@ float policy_loss_and_grad(float* grad_logprob, float* grad_entropy, float* adv,
     return loss;
 }
 
-__global__ void gae_compute_block_advantage_kernel(float* advantage, float* reward, float* v, float* v_next, bool* terminated, bool* truncated, float gamma, float lambda, int n) {
+__global__ void gae_compute_block_advantage_kernel(float* advantage, float* reward, float* v, float* v_next, bool* terminated, bool* truncated, bool* terminated_out, float gamma, float alpha, int n) {
     __shared__ float shared_sum[BLOCK_SIZE];
     __shared__ bool shared_terminated[BLOCK_SIZE];
 
@@ -117,7 +117,7 @@ __global__ void gae_compute_block_advantage_kernel(float* advantage, float* rewa
 
         if (tid + stride < blockDim.x && !shared_terminated[tid]) {
             shared_terminated[tid] = shared_terminated[tid + stride];
-            temp = powf(gamma * lambda, stride) * shared_sum[tid + stride];
+            temp = powf(alpha, stride) * shared_sum[tid + stride];
         }
         __syncthreads();
         
@@ -126,7 +126,21 @@ __global__ void gae_compute_block_advantage_kernel(float* advantage, float* rewa
         __syncthreads();
     }
 
-    out[tid] = shared_sum[tid];
+    advantage[idx] = shared_sum[tid];
+    terminated_out[idx] = shared_terminated[tid];
+}
+
+__global__ void gae_merge_kernel(float* advantage, bool* terminated, float alpha, int n){
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    int first_el_next_block = (blockIdx.x + 1) * blockDim.x;
+
+    if (first_el_next_block < n) {
+        if (!terminated[idx]) {
+            // TODO This breaks if episode is longer than block size, for now assume this doesent happen
+            advantage[idx] += powf(alpha, blockDim.x - threadIdx.x) * advantage[first_el_next_block];
+        }
+    }
 }
 
 
@@ -135,11 +149,11 @@ void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float 
 
     float v_next[limit];
     forward_propagation(V, buffer->next_state_p, limit);
-    memccpy(v_next, V->output, limit, sizeof(float));
+    memcpy(v_next, V->output, limit * sizeof(float));
 
     float v[limit];
     forward_propagation(V, buffer->state_p, limit);
-    memccpy(v, V->output, limit, sizeof(float));
+    memcpy(v, V->output, limit * sizeof(float));
 
     // float* v_next;
     // cudaErrorCheck(cudaMalloc(&v_next, limit * sizeof(float)));
@@ -163,8 +177,17 @@ void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float 
     cudaErrorCheck(cudaMalloc(&d_v_next, limit * sizeof(float)));
     cudaErrorCheck(cudaMemcpy(d_v_next, v_next, limit * sizeof(float), cudaMemcpyHostToDevice));
 
-    gae_compute_block_advantage_kernel<<<ceilf(limit / BLOCK_SIZE), BLOCK_SIZE>>>(buffer->d_advantage_p, buffer->d_reward_p, d_v, d_v_next, buffer->d_terminated_p, buffer->d_truncated_p, gamma, lambda, limit);
+    bool* terminated_temp;
+    cudaErrorCheck(cudaMalloc(&terminated_temp, limit * sizeof(bool)));
 
+    gae_compute_block_advantage_kernel<<<(limit + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(buffer->d_advantage_p, buffer->d_reward_p, d_v, d_v_next, buffer->d_terminated_p, buffer->d_truncated_p, terminated_temp, gamma, gamma * lambda, limit);
+
+    gae_merge_kernel<<<(limit + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(buffer->d_advantage_p, terminated_temp, gamma * lambda, limit);
+
+    float advantage_float[limit];
+    cudaErrorCheck(cudaMemcpy(advantage_float, buffer->d_advantage_p, limit * sizeof(float), cudaMemcpyDeviceToHost));
+
+    buffer_to_host(buffer);
 
     float delta[limit];
 
@@ -175,6 +198,9 @@ void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float 
     float sum = 0;
     for (int i = limit - 1; i >= 0; i--) {
         *buffer->advantage(buffer, i) = delta[i] + gamma * lambda * !(*buffer->truncated(buffer, i) || *buffer->terminated(buffer, i)) * *buffer->advantage(buffer, i + 1);
+
+
+        printf("%f %f\n", advantage_float[i], *buffer->advantage(buffer, i));
 
         sum += *buffer->advantage(buffer, i);
     }

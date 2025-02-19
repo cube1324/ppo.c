@@ -3,39 +3,39 @@
 #include "cuda_helper.hu"
 
 float* get_action(TrajectoryBuffer* buffer, int idx) {
-    return buffer->d_action_p + idx * buffer->action_size;
+    return buffer->action_p + idx * buffer->action_size;
 }
 
 float* get_state(TrajectoryBuffer* buffer, int idx) {
-    return buffer->d_state_p + idx * buffer->state_size;
+    return buffer->state_p + idx * buffer->state_size;
 }
 
 float* get_next_state(TrajectoryBuffer* buffer, int idx) {
-    return buffer->d_next_state_p + idx * buffer->state_size;
+    return buffer->next_state_p + idx * buffer->state_size;
 }
 
 float* get_reward(TrajectoryBuffer* buffer, int idx) {
-    return buffer->d_reward_p + idx;
+    return buffer->reward_p + idx;
 }
 
 float* get_logprob(TrajectoryBuffer* buffer, int idx) {
-    return buffer->d_logprob_p + idx;
+    return buffer->logprob_p + idx;
 }
 
 float* get_advantage(TrajectoryBuffer* buffer, int idx) {
-    return buffer->d_advantage_p + idx;
+    return buffer->advantage_p + idx;
 }
 
 float* get_adv_target(TrajectoryBuffer* buffer, int idx) {
-    return buffer->d_adv_target_p + idx;
+    return buffer->adv_target_p + idx;
 }
 
 bool* get_terminated(TrajectoryBuffer* buffer, int idx) {
-    return buffer->d_terminated_p + idx;
+    return buffer->terminated_p + idx;
 }
 
 bool* get_truncated(TrajectoryBuffer* buffer, int idx) {
-    return buffer->d_truncated_p + idx;
+    return buffer->truncated_p + idx;
 }
 
 TrajectoryBuffer* create_trajectory_buffer(int capacity, int state_size, int action_size) {
@@ -45,15 +45,26 @@ TrajectoryBuffer* create_trajectory_buffer(int capacity, int state_size, int act
     buffer->state_size = state_size;
     buffer->action_size = action_size;
     buffer->full = false;
-    buffer->action_p = (float*)malloc(capacity * action_size * sizeof(float));
-    buffer->state_p = (float*)malloc(capacity * state_size * sizeof(float));
-    buffer->next_state_p = (float*)malloc(capacity * state_size * sizeof(float));
-    buffer->reward_p = (float*)malloc(capacity * sizeof(float));
-    buffer->logprob_p = (float*)malloc(capacity * sizeof(float));
-    buffer->advantage_p = (float*)malloc(capacity * sizeof(float));
-    buffer->adv_target_p = (float*)malloc(capacity * sizeof(float));
-    buffer->terminated_p = (bool*)malloc(capacity * sizeof(bool));
-    buffer->truncated_p = (bool*)malloc(capacity * sizeof(bool));
+
+    buffer->h_action_p = (float*)malloc(capacity * action_size * sizeof(float));
+    buffer->h_state_p = (float*)malloc(capacity * state_size * sizeof(float));
+    buffer->h_next_state_p = (float*)malloc(capacity * state_size * sizeof(float));
+    buffer->h_reward_p = (float*)malloc(capacity * sizeof(float));
+    buffer->h_logprob_p = (float*)malloc(capacity * sizeof(float));
+    buffer->h_advantage_p = (float*)malloc(capacity * sizeof(float));
+    buffer->h_adv_target_p = (float*)malloc(capacity * sizeof(float));
+    buffer->h_terminated_p = (bool*)malloc(capacity * sizeof(bool));
+    buffer->h_truncated_p = (bool*)malloc(capacity * sizeof(bool));
+
+    buffer->action_p = buffer->h_action_p;
+    buffer->state_p = buffer->h_state_p;
+    buffer->next_state_p = buffer->h_next_state_p;
+    buffer->reward_p = buffer->h_reward_p;
+    buffer->logprob_p = buffer->h_logprob_p;
+    buffer->advantage_p = buffer->h_advantage_p;
+    buffer->adv_target_p = buffer->h_adv_target_p;
+    buffer->terminated_p = buffer->h_terminated_p;
+    buffer->truncated_p = buffer->h_truncated_p;
 
     cudaErrorCheck(cudaMalloc(&buffer->d_action_p, capacity * action_size * sizeof(float)));
     cudaErrorCheck(cudaMalloc(&buffer->d_state_p, capacity * state_size * sizeof(float)));
@@ -160,6 +171,16 @@ void buffer_to_device(TrajectoryBuffer* buffer) {
     cudaErrorCheck(cudaMemcpy(buffer->d_adv_target_p, buffer->adv_target_p, limit * sizeof(float), cudaMemcpyHostToDevice));
     cudaErrorCheck(cudaMemcpy(buffer->d_terminated_p, buffer->terminated_p, limit * sizeof(bool), cudaMemcpyHostToDevice));
     cudaErrorCheck(cudaMemcpy(buffer->d_truncated_p, buffer->truncated_p, limit * sizeof(bool), cudaMemcpyHostToDevice));
+
+    buffer->action_p = buffer->d_action_p;
+    buffer->state_p = buffer->d_state_p;
+    buffer->next_state_p = buffer->d_next_state_p;
+    buffer->reward_p = buffer->d_reward_p;
+    buffer->logprob_p = buffer->d_logprob_p;
+    buffer->advantage_p = buffer->d_advantage_p;
+    buffer->adv_target_p = buffer->d_adv_target_p;
+    buffer->terminated_p = buffer->d_terminated_p;
+    buffer->truncated_p = buffer->d_truncated_p;
 }
 
 void buffer_to_host(TrajectoryBuffer* buffer) {
@@ -174,4 +195,14 @@ void buffer_to_host(TrajectoryBuffer* buffer) {
     cudaErrorCheck(cudaMemcpy(buffer->adv_target_p, buffer->d_adv_target_p, limit * sizeof(float), cudaMemcpyDeviceToHost));
     cudaErrorCheck(cudaMemcpy(buffer->terminated_p, buffer->d_terminated_p, limit * sizeof(bool), cudaMemcpyDeviceToHost));
     cudaErrorCheck(cudaMemcpy(buffer->truncated_p, buffer->d_truncated_p, limit * sizeof(bool), cudaMemcpyDeviceToHost));
+
+    buffer->action_p = buffer->h_action_p;
+    buffer->state_p = buffer->h_state_p;
+    buffer->next_state_p = buffer->h_next_state_p;
+    buffer->reward_p = buffer->h_reward_p;
+    buffer->logprob_p = buffer->h_logprob_p;
+    buffer->advantage_p = buffer->h_advantage_p;
+    buffer->adv_target_p = buffer->h_adv_target_p;
+    buffer->terminated_p = buffer->h_terminated_p;
+    buffer->truncated_p = buffer->h_truncated_p;
 }

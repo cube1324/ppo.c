@@ -20,6 +20,16 @@ struct TrajectoryBuffer
     bool* terminated_p;
     bool* truncated_p;
 
+    float* h_state_p;
+    float* h_action_p;
+    float* h_next_state_p;
+    float* h_reward_p;
+    float* h_logprob_p;
+    float* h_advantage_p;
+    float* h_adv_target_p;
+    bool* h_terminated_p;
+    bool* h_truncated_p;
+
     float* d_state_p;
     float* d_action_p;
     float* d_next_state_p;

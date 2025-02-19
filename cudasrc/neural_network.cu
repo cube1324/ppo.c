@@ -59,7 +59,7 @@ NeuralNetwork* create_neural_network(int* layer_sizes, char** activation_functio
 
 void forward_propagation(NeuralNetwork* nn, float* input, int m) {
     free(nn->layers[0].input);
-    nn->layers[0].input = malloc(m * nn->layers[0].input_size * sizeof(float));
+    nn->layers[0].input = (float*)malloc(m * nn->layers[0].input_size * sizeof(float));
     memcpy(nn->layers[0].input, input, m * nn->layers[0].input_size * sizeof(float));
 
     int last_idx = nn->num_layers - 2;
@@ -67,7 +67,7 @@ void forward_propagation(NeuralNetwork* nn, float* input, int m) {
     for (int i = 0; i < last_idx; i++) {
         free(nn->layers[i + 1].input);
 
-        nn->layers[i + 1].input = calloc(m * nn->layers[i + 1].input_size, sizeof(float));
+        nn->layers[i + 1].input = (float*)calloc(m * nn->layers[i + 1].input_size, sizeof(float));
 
         mat_mul(nn->layers[i + 1].input, nn->layers[i].input, nn->layers[i].weights, nn->layers[i].biases, m, nn->layers[i].input_size, nn->layers[i].output_size);
 
@@ -76,7 +76,7 @@ void forward_propagation(NeuralNetwork* nn, float* input, int m) {
         }
     }
     free(nn->output);
-    nn->output = calloc(m * nn->output_size, sizeof(float));
+    nn->output = (float*)calloc(m * nn->output_size, sizeof(float));
 
     mat_mul(nn->output, nn->layers[last_idx].input, nn->layers[last_idx].weights, nn->layers[last_idx].biases, m, nn->layers[last_idx].input_size, nn->output_size);
 
@@ -98,7 +98,7 @@ void backward_pass(NeuralNetwork* nn, LossFunction* lossf, float* y_true, int m)
 void backward_propagation(NeuralNetwork* nn, float* grad_in, int m) {
     // out = activation(x * w + b)
     
-    float* layer_grad = calloc(m * nn->output_size, sizeof(float));
+    float* layer_grad = (float*)calloc(m * nn->output_size, sizeof(float));
 
     memcpy(layer_grad, grad_in, m * nn->output_size * sizeof(float));
 
@@ -108,7 +108,7 @@ void backward_propagation(NeuralNetwork* nn, float* grad_in, int m) {
 
     for (int i = nn->num_layers - 2; i >= 0; i--) {
 
-        float* temp_grad_x = calloc(m * nn->layers[i].input_size, sizeof(float));
+        float* temp_grad_x = (float*)calloc(m * nn->layers[i].input_size, sizeof(float));
 
         memset(nn->layers[i].grad_weights, 0.0, nn->layers[i].input_size * nn->layers[i].output_size * sizeof(float));
         memset(nn->layers[i].grad_biases, 0.0, nn->layers[i].output_size * sizeof(float));

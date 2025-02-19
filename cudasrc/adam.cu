@@ -5,9 +5,9 @@ Adam* create_adam(float** weights, float** grad_weights, int* length, int num_la
     Adam* adam = (Adam*)malloc(sizeof(Adam));
     adam->m = (float*)calloc(size, sizeof(float));
     adam->v = (float*)calloc(size, sizeof(float));
-    adam->weights = malloc(num_layers * sizeof(float*));
-    adam->grad_weights = malloc(num_layers * sizeof(float*));
-    adam->lengths = malloc(num_layers * sizeof(int));
+    adam->weights = (float**)malloc(num_layers * sizeof(float*));
+    adam->grad_weights = (float**)malloc(num_layers * sizeof(float*));
+    adam->lengths = (int*)malloc(num_layers * sizeof(int));
     memcpy(adam->weights, weights, num_layers * sizeof(float*));
     memcpy(adam->grad_weights, grad_weights, num_layers * sizeof(float*));
     memcpy(adam->lengths, length, num_layers * sizeof(int));
@@ -94,9 +94,9 @@ Adam* load_adam(FILE* file, float** weights, float** grad_weights, int* length) 
     fread(adam->m, sizeof(float), adam->size, file);
     fread(adam->v, sizeof(float), adam->size, file);
 
-    adam->weights = malloc(adam->num_layers * sizeof(float*));
-    adam->grad_weights = malloc(adam->num_layers * sizeof(float*));
-    adam->lengths = malloc(adam->num_layers * sizeof(int));
+    adam->weights = (float**)malloc(adam->num_layers * sizeof(float*));
+    adam->grad_weights = (float**)malloc(adam->num_layers * sizeof(float*));
+    adam->lengths = (int*)malloc(adam->num_layers * sizeof(int));
 
     memcpy(adam->weights, weights, adam->num_layers * sizeof(float*));
     memcpy(adam->grad_weights, grad_weights, adam->num_layers * sizeof(float*));

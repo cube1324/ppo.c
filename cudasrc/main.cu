@@ -6,6 +6,7 @@
 #include "ppo.h"
 #include "gym_env.h"
 #include "env.h"
+#include <cblas.h>
 
 void test_nn(){
     srand(0);
@@ -17,7 +18,7 @@ void test_nn(){
 
     int layer_sizes[] = {input_size, 32, 32, output_size};
     int num_layers = 4;
-    float* input = malloc(m * input_size * sizeof(float));
+    float* input = (float*)malloc(m * input_size * sizeof(float));
 
     float temp_input[] = {0.0, 0.0,
                           0.0, 1.0,
@@ -84,8 +85,9 @@ int main(int argc, char** argv) {
     int n_epochs_policy = 4;
     int n_epochs_value = 10;
     int steps_per_epoch = 30000;
-    int steps_per_fit = 3000;
+    int steps_per_fit = 400;
     int n_epochs = 10;
+    printf("Trainingawd\n");
 
     PPO* ppo = create_ppo(activation_functions, layer_sizes, num_layers, steps_per_fit, lr, lr, lambda, epsilon, ent_coeff, init_std);
 

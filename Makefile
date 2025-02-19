@@ -1,7 +1,7 @@
 CC = gcc
 NVCC = nvcc
 CFLAGS = -Ofast
-NVCCFLAGS = -O3
+NVCCFLAGS = -g -G
 LDFLAGS = -lm -lpython3.10 -lopenblas
 
 SRCDIR = src
@@ -15,8 +15,8 @@ LINK_PYTHON = $(PPO_PYTHON)/lib
 
 SOURCES = $(wildcard $(SRCDIR)/*.c)
 CU_SOURCES = $(wildcard $(CUDASRCDIR)/*.cu)
-OBJECTS = $(SOURCES:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
-CU_OBJECTS = $(CU_SOURCES:$(CUDASRCDIR)/%.cu=$(OBJDIR)/%.o)
+OBJECTS = $(SOURCES:$(SRCDIR)/%.c=$(OBJDIR)/c/%.o)
+CU_OBJECTS = $(CU_SOURCES:$(CUDASRCDIR)/%.cu=$(OBJDIR)/cuda/%.o)
 EXECUTABLE = $(BINDIR)/ppo
 CUDA_EXECUTABLE = $(BINDIR)/ppo_cuda
 
@@ -34,12 +34,12 @@ $(CUDA_EXECUTABLE): $(CU_OBJECTS)
 	@mkdir -p $(BINDIR)
 	$(NVCC) $(NVCCFLAGS) -I $(HEADERS) -I $(HEADERS_PYTHON) -L $(LINK_PYTHON) $(CU_OBJECTS) -o $@ $(LDFLAGS)
 
-$(OBJDIR)/%.o: $(SRCDIR)/%.c
-	@mkdir -p $(OBJDIR)
+$(OBJDIR)/c/%.o: $(SRCDIR)/%.c
+	@mkdir -p $(OBJDIR)/c
 	$(CC) -I $(HEADERS) -I $(HEADERS_PYTHON) -L $(LINK_PYTHON) $(CFLAGS) -c $< -o $@
 
-$(OBJDIR)/%.o: $(CUDASRCDIR)/%.cu
-	@mkdir -p $(OBJDIR)
+$(OBJDIR)/cuda/%.o: $(CUDASRCDIR)/%.cu
+	@mkdir -p $(OBJDIR)/cuda
 	$(NVCC) -I $(HEADERS) -I $(HEADERS_PYTHON) -L $(LINK_PYTHON) $(NVCCFLAGS) -c $< -o $@
 
 clean:
