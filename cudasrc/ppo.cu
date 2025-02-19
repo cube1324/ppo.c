@@ -95,32 +95,29 @@ float policy_loss_and_grad(float* grad_logprob, float* grad_entropy, float* adv,
     return loss;
 }
 
-
-__global__ void gae_compute_delta_kernel(float* delta, float* v, float* v_next, bool* terminated, float* reward, float gamma, int n){
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) {
-        delta[idx] = reward[idx] + gamma * v_next[idx] * !terminated[idx] - v[idx];
-    }
-}
-
-__global__ void gae_compute_block_advantage_kernel(float* advantage, float* delta, bool* terminated, float* adv_target, float gamma, float lambda, int n) {
-    __shared__ float shared_sum[blockDim.x];
+__global__ void gae_compute_block_advantage_kernel(float* advantage, float* reward, float* v, float* v_next, bool* terminated, bool* truncated, float gamma, float lambda, int n) {
+    __shared__ float shared_sum[BLOCK_SIZE];
+    __shared__ bool shared_terminated[BLOCK_SIZE];
 
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int tid = threadIdx.x;
     
     if (idx < n) {
-        shared_sum[threadIdx.x] = delta[idx];
+        shared_sum[tid] = reward[idx] + gamma * v_next[idx] * !terminated[idx] - v[idx];
+        shared_terminated[tid] = terminated[idx] || truncated[idx];
     } else {
-        shared_sum[threadIdx.x] = 0.0f;
+        shared_sum[tid] = 0.0f;
+        shared_terminated[tid] = 0;
     }
 
     __syncthreads();
 
     for (int stride = 1; stride < blockDim.x; stride *= 2) {
         float temp = 0.0f;
-        if (tid >= stride) {
-            temp = powf(gamma, stride) * shared_sum[blockDim.x - (tid - stride) - 1];
+
+        if (tid + stride < blockDim.x && !shared_terminated[tid]) {
+            shared_terminated[tid] = shared_terminated[tid + stride];
+            temp = powf(gamma * lambda, stride) * shared_sum[tid + stride];
         }
         __syncthreads();
         
@@ -128,6 +125,8 @@ __global__ void gae_compute_block_advantage_kernel(float* advantage, float* delt
         
         __syncthreads();
     }
+
+    out[tid] = shared_sum[tid];
 }
 
 
@@ -156,16 +155,22 @@ void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float 
 
     buffer_to_device(buffer);
 
-    float* delta;
-    cudaErrorCheck(cudaMalloc(&delta, limit * sizeof(float)));
+    float* d_v;
+    cudaErrorCheck(cudaMalloc(&d_v, limit * sizeof(float)));
+    cudaErrorCheck(cudaMemcpy(d_v, v, limit * sizeof(float), cudaMemcpyHostToDevice));
 
-    gae_compute_delta_kernel<<<(limit + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(delta, v, v_next, buffer->d_terminated_p, buffer->d_reward_p, gamma, limit);
+    float* d_v_next;
+    cudaErrorCheck(cudaMalloc(&d_v_next, limit * sizeof(float)));
+    cudaErrorCheck(cudaMemcpy(d_v_next, v_next, limit * sizeof(float), cudaMemcpyHostToDevice));
+
+    gae_compute_block_advantage_kernel<<<ceilf(limit / BLOCK_SIZE), BLOCK_SIZE>>>(buffer->d_advantage_p, buffer->d_reward_p, d_v, d_v_next, buffer->d_terminated_p, buffer->d_truncated_p, gamma, lambda, limit);
 
 
+    float delta[limit];
 
-    // for (int i = 0; i < limit; i++) {
-    //     delta[i] = *buffer->reward(buffer, i) + gamma * v_next[i] * !*buffer->terminated(buffer, i) - v[i];
-    // }
+    for (int i = 0; i < limit; i++) {
+        delta[i] = *buffer->reward(buffer, i) + gamma * v_next[i] * !*buffer->terminated(buffer, i) - v[i];
+    }
 
     float sum = 0;
     for (int i = limit - 1; i >= 0; i--) {
