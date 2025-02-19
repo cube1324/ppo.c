@@ -112,6 +112,8 @@ __global__ void gae_compute_block_advantage_kernel(float* advantage, float* rewa
 
     __syncthreads();
 
+    // TODO omptimize presum https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda
+
     for (int stride = 1; stride < blockDim.x; stride *= 2) {
         float temp = 0.0f;
 
@@ -130,7 +132,7 @@ __global__ void gae_compute_block_advantage_kernel(float* advantage, float* rewa
     terminated_out[idx] = shared_terminated[tid];
 }
 
-__global__ void gae_merge_kernel(float* advantage, bool* terminated, float alpha, int n){
+__global__ void gae_merge_kernel(float* advantage, bool* terminated, float* v, float* adv_target, float alpha, int n){
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     int first_el_next_block = (blockIdx.x + 1) * blockDim.x;
@@ -140,6 +142,10 @@ __global__ void gae_merge_kernel(float* advantage, bool* terminated, float alpha
             // TODO This breaks if episode is longer than block size, for now assume this doesent happen
             advantage[idx] += powf(alpha, blockDim.x - threadIdx.x) * advantage[first_el_next_block];
         }
+    }
+
+    if (idx < n) {
+        adv_target[idx] = v[idx] + advantage[idx];
     }
 }
 
@@ -182,8 +188,10 @@ void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float 
 
     gae_compute_block_advantage_kernel<<<(limit + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(buffer->d_advantage_p, buffer->d_reward_p, d_v, d_v_next, buffer->d_terminated_p, buffer->d_truncated_p, terminated_temp, gamma, gamma * lambda, limit);
 
-    gae_merge_kernel<<<(limit + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(buffer->d_advantage_p, terminated_temp, gamma * lambda, limit);
+    gae_merge_kernel<<<(limit + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(buffer->d_advantage_p, terminated_temp, d_v, buffer->d_adv_target_p, gamma * lambda, limit);
 
+
+    // TODO use Welford's online algorithm for mean and variance
     float advantage_float[limit];
     cudaErrorCheck(cudaMemcpy(advantage_float, buffer->d_advantage_p, limit * sizeof(float), cudaMemcpyDeviceToHost));
 

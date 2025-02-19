@@ -85,7 +85,7 @@ int main(int argc, char** argv) {
     int n_epochs_policy = 4;
     int n_epochs_value = 10;
     int steps_per_epoch = 30000;
-    int steps_per_fit = 400;
+    int steps_per_fit = 3000;
     int n_epochs = 10;
     printf("Trainingawd\n");
 
