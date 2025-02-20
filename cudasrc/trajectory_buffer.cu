@@ -1,6 +1,6 @@
 #include "trajectory_buffer.h"
 
-#include "cuda_helper.hu"
+#include "cuda_helper.cuh"
 
 float* get_action(TrajectoryBuffer* buffer, int idx) {
     return buffer->action_p + idx * buffer->action_size;

@@ -1,6 +1,7 @@
 #include "ppo.h"
 
-#include "cuda_helper.hu"
+#include "cuda_helper.cuh"
+#include "welford_var.cuh"
 
 #define BLOCK_SIZE 1024
 
@@ -149,6 +150,14 @@ __global__ void gae_merge_kernel(float* advantage, bool* terminated, float* v, f
     }
 }
 
+__global__ void normalize_advantage_kernel(float* advantage, float mean, float std, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < n) {
+        advantage[idx] = (advantage[idx] - mean) / (std + 1e-8);
+    }
+}
+
 
 void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float lambda) {
     int limit = buffer->full ? buffer->capacity : buffer->idx;
@@ -186,10 +195,28 @@ void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float 
     bool* terminated_temp;
     cudaErrorCheck(cudaMalloc(&terminated_temp, limit * sizeof(bool)));
 
-    gae_compute_block_advantage_kernel<<<(limit + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(buffer->d_advantage_p, buffer->d_reward_p, d_v, d_v_next, buffer->d_terminated_p, buffer->d_truncated_p, terminated_temp, gamma, gamma * lambda, limit);
+    const int n_blocks = (limit + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
-    gae_merge_kernel<<<(limit + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(buffer->d_advantage_p, terminated_temp, d_v, buffer->d_adv_target_p, gamma * lambda, limit);
+    gae_compute_block_advantage_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, buffer->d_reward_p, d_v, d_v_next, buffer->d_terminated_p, buffer->d_truncated_p, terminated_temp, gamma, gamma * lambda, limit);
 
+    gae_merge_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, terminated_temp, d_v, buffer->d_adv_target_p, gamma * lambda, limit);
+
+    WelfordState block_states[n_blocks];
+    WelfordState* d_block_states;
+    cudaErrorCheck(cudaMalloc(&d_block_states, n_blocks * sizeof(WelfordState)));
+
+    welford_var_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, limit, d_block_states);
+
+    cudaErrorCheck(cudaMemcpy(block_states, d_block_states, n_blocks * sizeof(WelfordState), cudaMemcpyDeviceToHost));
+
+    WelfordState state;
+
+    welford_combine_blocks(block_states, n_blocks, &state);
+
+    float mean2 = state.mean;
+    float std2 = sqrt(state.m2 / state.n);
+
+    normalize_advantage_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, mean2, std2, limit);
 
     // TODO use Welford's online algorithm for mean and variance
     float advantage_float[limit];
