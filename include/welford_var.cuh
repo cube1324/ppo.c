@@ -14,35 +14,35 @@ __global__ void welford_var_kernel(float *data, int n, WelfordState *state_out) 
     int tid = threadIdx.x;
     int idx = blockIdx.x * blockDim.x + tid;
 
-    WelfordState localState;
     if (idx < n) {
-        localState.mean = data[idx];
-        localState.m2 = 0;
-        localState.n = 1;
+        sharedData[tid].mean = data[idx];
+        sharedData[tid].m2 = 0.0f;
+        sharedData[tid].n = 1;
     } else {
-        localState.mean = 0;
-        localState.m2 = 0;
-        localState.n = 0;
+        sharedData[tid].mean = 0.0f;
+        sharedData[tid].m2 = 0.0f;
+        sharedData[tid].n = 0;
     }
 
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        WelfordState localState = sharedData[tid];
         if (tid < s) {
             WelfordState other = sharedData[tid + s];
-            WelfordState combined;
             float delta = other.mean - localState.mean;
             int n = localState.n + other.n;
             float mean = localState.mean + delta * other.n / n;
             float m2 = localState.m2 + other.m2 + delta * delta * localState.n * other.n / n;
-            combined.mean = mean;
-            combined.m2 = m2;
-            combined.n = localState.n + other.n;
-            localState = combined;
+            localState.mean = mean;
+            localState.m2 = m2;
+            localState.n = n;
         }
         __syncthreads();
         sharedData[tid] = localState;
     }
 
-    state_out[blockIdx.x] = localState;
+    if (tid == 0) {
+        state_out[blockIdx.x] = sharedData[0];
+    }
 }
 
 

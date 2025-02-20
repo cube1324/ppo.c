@@ -205,7 +205,7 @@ void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float 
     WelfordState* d_block_states;
     cudaErrorCheck(cudaMalloc(&d_block_states, n_blocks * sizeof(WelfordState)));
 
-    welford_var_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, limit, d_block_states);
+    welford_var_kernel<<<n_blocks, BLOCK_SIZE, BLOCK_SIZE * sizeof(WelfordState)>>>(buffer->d_advantage_p, limit, d_block_states);
 
     cudaErrorCheck(cudaMemcpy(block_states, d_block_states, n_blocks * sizeof(WelfordState), cudaMemcpyDeviceToHost));
 
@@ -218,43 +218,11 @@ void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float 
 
     normalize_advantage_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, mean2, std2, limit);
 
-    // TODO use Welford's online algorithm for mean and variance
-    float advantage_float[limit];
-    cudaErrorCheck(cudaMemcpy(advantage_float, buffer->d_advantage_p, limit * sizeof(float), cudaMemcpyDeviceToHost));
-
     buffer_to_host(buffer);
 
-    float delta[limit];
-
-    for (int i = 0; i < limit; i++) {
-        delta[i] = *buffer->reward(buffer, i) + gamma * v_next[i] * !*buffer->terminated(buffer, i) - v[i];
-    }
-
-    float sum = 0;
-    for (int i = limit - 1; i >= 0; i--) {
-        *buffer->advantage(buffer, i) = delta[i] + gamma * lambda * !(*buffer->truncated(buffer, i) || *buffer->terminated(buffer, i)) * *buffer->advantage(buffer, i + 1);
-
-
-        printf("%f %f\n", advantage_float[i], *buffer->advantage(buffer, i));
-
-        sum += *buffer->advantage(buffer, i);
-    }
-
-    for (int i = 0; i < limit; i++) {
-        *buffer->adv_target(buffer, i) = v[i] + *buffer->advantage(buffer, i);
-    }
-
-    float mean = sum / limit;
-    
-    float std = 0;
-    for (int i = 0; i < limit; i++) {
-        std += pow(*buffer->advantage(buffer, i) - mean, 2);
-    }
-    std = sqrt(std / limit);
-
-    for (int i = 0; i < limit; i++) {
-        *buffer->advantage(buffer, i) = (*buffer->advantage(buffer, i) - mean) / (std + 1e-8);
-    }
+    cudaErrorCheck(cudaFree(d_v));
+    cudaErrorCheck(cudaFree(d_v_next));
+    cudaErrorCheck(cudaFree(terminated_temp));
 }
 
 

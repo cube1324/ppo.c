@@ -162,15 +162,15 @@ void reset_buffer(TrajectoryBuffer* buffer) {
 void buffer_to_device(TrajectoryBuffer* buffer) {
     int limit = buffer->full ? buffer->capacity : buffer->idx;
 
-    cudaErrorCheck(cudaMemcpy(buffer->d_action_p, buffer->action_p, limit * buffer->action_size * sizeof(float), cudaMemcpyHostToDevice));
-    cudaErrorCheck(cudaMemcpy(buffer->d_state_p, buffer->state_p, limit * buffer->state_size * sizeof(float), cudaMemcpyHostToDevice));
-    cudaErrorCheck(cudaMemcpy(buffer->d_next_state_p, buffer->next_state_p, limit * buffer->state_size * sizeof(float), cudaMemcpyHostToDevice));
-    cudaErrorCheck(cudaMemcpy(buffer->d_reward_p, buffer->reward_p, limit * sizeof(float), cudaMemcpyHostToDevice));
-    cudaErrorCheck(cudaMemcpy(buffer->d_logprob_p, buffer->logprob_p, limit * sizeof(float), cudaMemcpyHostToDevice));
-    cudaErrorCheck(cudaMemcpy(buffer->d_advantage_p, buffer->advantage_p, limit * sizeof(float), cudaMemcpyHostToDevice));
-    cudaErrorCheck(cudaMemcpy(buffer->d_adv_target_p, buffer->adv_target_p, limit * sizeof(float), cudaMemcpyHostToDevice));
-    cudaErrorCheck(cudaMemcpy(buffer->d_terminated_p, buffer->terminated_p, limit * sizeof(bool), cudaMemcpyHostToDevice));
-    cudaErrorCheck(cudaMemcpy(buffer->d_truncated_p, buffer->truncated_p, limit * sizeof(bool), cudaMemcpyHostToDevice));
+    cudaErrorCheck(cudaMemcpy(buffer->d_action_p, buffer->h_action_p, limit * buffer->action_size * sizeof(float), cudaMemcpyHostToDevice));
+    cudaErrorCheck(cudaMemcpy(buffer->d_state_p, buffer->h_state_p, limit * buffer->state_size * sizeof(float), cudaMemcpyHostToDevice));
+    cudaErrorCheck(cudaMemcpy(buffer->d_next_state_p, buffer->h_next_state_p, limit * buffer->state_size * sizeof(float), cudaMemcpyHostToDevice));
+    cudaErrorCheck(cudaMemcpy(buffer->d_reward_p, buffer->h_reward_p, limit * sizeof(float), cudaMemcpyHostToDevice));
+    cudaErrorCheck(cudaMemcpy(buffer->d_logprob_p, buffer->h_logprob_p, limit * sizeof(float), cudaMemcpyHostToDevice));
+    cudaErrorCheck(cudaMemcpy(buffer->d_advantage_p, buffer->h_advantage_p, limit * sizeof(float), cudaMemcpyHostToDevice));
+    cudaErrorCheck(cudaMemcpy(buffer->d_adv_target_p, buffer->h_adv_target_p, limit * sizeof(float), cudaMemcpyHostToDevice));
+    cudaErrorCheck(cudaMemcpy(buffer->d_terminated_p, buffer->h_terminated_p, limit * sizeof(bool), cudaMemcpyHostToDevice));
+    cudaErrorCheck(cudaMemcpy(buffer->d_truncated_p, buffer->h_truncated_p, limit * sizeof(bool), cudaMemcpyHostToDevice));
 
     buffer->action_p = buffer->d_action_p;
     buffer->state_p = buffer->d_state_p;
@@ -186,15 +186,15 @@ void buffer_to_device(TrajectoryBuffer* buffer) {
 void buffer_to_host(TrajectoryBuffer* buffer) {
     int limit = buffer->full ? buffer->capacity : buffer->idx;
 
-    cudaErrorCheck(cudaMemcpy(buffer->action_p, buffer->d_action_p, limit * buffer->action_size * sizeof(float), cudaMemcpyDeviceToHost));
-    cudaErrorCheck(cudaMemcpy(buffer->state_p, buffer->d_state_p, limit * buffer->state_size * sizeof(float), cudaMemcpyDeviceToHost));
-    cudaErrorCheck(cudaMemcpy(buffer->next_state_p, buffer->d_next_state_p, limit * buffer->state_size * sizeof(float), cudaMemcpyDeviceToHost));
-    cudaErrorCheck(cudaMemcpy(buffer->reward_p, buffer->d_reward_p, limit * sizeof(float), cudaMemcpyDeviceToHost));
-    cudaErrorCheck(cudaMemcpy(buffer->logprob_p, buffer->d_logprob_p, limit * sizeof(float), cudaMemcpyDeviceToHost));
-    cudaErrorCheck(cudaMemcpy(buffer->advantage_p, buffer->d_advantage_p, limit * sizeof(float), cudaMemcpyDeviceToHost));
-    cudaErrorCheck(cudaMemcpy(buffer->adv_target_p, buffer->d_adv_target_p, limit * sizeof(float), cudaMemcpyDeviceToHost));
-    cudaErrorCheck(cudaMemcpy(buffer->terminated_p, buffer->d_terminated_p, limit * sizeof(bool), cudaMemcpyDeviceToHost));
-    cudaErrorCheck(cudaMemcpy(buffer->truncated_p, buffer->d_truncated_p, limit * sizeof(bool), cudaMemcpyDeviceToHost));
+    cudaErrorCheck(cudaMemcpy(buffer->h_action_p, buffer->d_action_p, limit * buffer->action_size * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaErrorCheck(cudaMemcpy(buffer->h_state_p, buffer->d_state_p, limit * buffer->state_size * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaErrorCheck(cudaMemcpy(buffer->h_next_state_p, buffer->d_next_state_p, limit * buffer->state_size * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaErrorCheck(cudaMemcpy(buffer->h_reward_p, buffer->d_reward_p, limit * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaErrorCheck(cudaMemcpy(buffer->h_logprob_p, buffer->d_logprob_p, limit * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaErrorCheck(cudaMemcpy(buffer->h_advantage_p, buffer->d_advantage_p, limit * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaErrorCheck(cudaMemcpy(buffer->h_adv_target_p, buffer->d_adv_target_p, limit * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaErrorCheck(cudaMemcpy(buffer->h_terminated_p, buffer->d_terminated_p, limit * sizeof(bool), cudaMemcpyDeviceToHost));
+    cudaErrorCheck(cudaMemcpy(buffer->h_truncated_p, buffer->d_truncated_p, limit * sizeof(bool), cudaMemcpyDeviceToHost));
 
     buffer->action_p = buffer->h_action_p;
     buffer->state_p = buffer->h_state_p;
