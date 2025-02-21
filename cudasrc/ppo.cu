@@ -2,8 +2,7 @@
 
 #include "cuda_helper.cuh"
 #include "welford_var.cuh"
-
-#define BLOCK_SIZE 1024
+#include "constants.cuh"
 
 PPO* create_ppo(char** activation_functions, int* layer_sizes, int num_layers, int buffer_size, float lr_policy, float lr_v, float lambda, float epsilon, float ent_coeff, float init_std) {
 

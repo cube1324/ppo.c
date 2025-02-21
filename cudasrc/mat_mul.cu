@@ -1,10 +1,44 @@
 
-#include "mat_mul.h"
+#include "mat_mul.cuh"
 
 #include <time.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <cblas.h>
+
+
+__global__ void mat_mul_kernel(float* out, float* x, float* weight, float* bias, int m, int n, int l) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i < m && j < l) {
+        out[i * l + j] = bias[j];
+        for (int k = 0; k < n; k++) {
+            out[i * l + j] += x[i * n + k] * weight[j * n + k];
+        }
+    }
+}
+
+__global__ void mat_mul_backwards_kernel(float* grad_x, float* grad_weight, float* grad_in, float* x, float* weight, int m, int n, int l) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i < m && j < n) {
+        grad_x[i * n + j] = 0;
+        for (int k = 0; k < l; k++) {
+            grad_x[i * n + j] += grad_in[i * l + k] * weight[k * n + j];
+        }
+    }
+
+    if (i < l && j < n) {
+        grad_weight[i * n + j] = 0;
+        for (int k = 0; k < m; k++) {
+            grad_weight[i * n + j] += grad_in[k * l + i] * x[k * n + j];
+        }
+    }
+}
+
+
 
 // x = m x n
 // weight = l x n

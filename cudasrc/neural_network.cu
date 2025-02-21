@@ -1,6 +1,9 @@
 
 #include "neural_network.h"
 
+#include "activation_function.cuh"
+#include "mat_mul.cuh"
+
 ActivationFunction* build_activation_function(char* name) {
     ActivationFunction* activation_function = (ActivationFunction*)malloc(sizeof(ActivationFunction));
 
