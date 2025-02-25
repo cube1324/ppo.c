@@ -1,6 +1,9 @@
 #include "trajectory_buffer.h"
 
+#include "constants.cuh"
 #include "cuda_helper.cuh"
+
+#include <curand_kernel.h>
 
 float* get_action(TrajectoryBuffer* buffer, int idx) {
     return buffer->action_p + idx * buffer->action_size;
@@ -56,15 +59,15 @@ TrajectoryBuffer* create_trajectory_buffer(int capacity, int state_size, int act
     buffer->h_terminated_p = (bool*)malloc(capacity * sizeof(bool));
     buffer->h_truncated_p = (bool*)malloc(capacity * sizeof(bool));
 
-    buffer->action_p = buffer->h_action_p;
-    buffer->state_p = buffer->h_state_p;
-    buffer->next_state_p = buffer->h_next_state_p;
-    buffer->reward_p = buffer->h_reward_p;
-    buffer->logprob_p = buffer->h_logprob_p;
-    buffer->advantage_p = buffer->h_advantage_p;
-    buffer->adv_target_p = buffer->h_adv_target_p;
-    buffer->terminated_p = buffer->h_terminated_p;
-    buffer->truncated_p = buffer->h_truncated_p;
+    // buffer->action_p = buffer->h_action_p;
+    // buffer->state_p = buffer->h_state_p;
+    // buffer->next_state_p = buffer->h_next_state_p;
+    // buffer->reward_p = buffer->h_reward_p;
+    // buffer->logprob_p = buffer->h_logprob_p;
+    // buffer->advantage_p = buffer->h_advantage_p;
+    // buffer->adv_target_p = buffer->h_adv_target_p;
+    // buffer->terminated_p = buffer->h_terminated_p;
+    // buffer->truncated_p = buffer->h_truncated_p;
 
     cudaErrorCheck(cudaMalloc(&buffer->d_action_p, capacity * action_size * sizeof(float)));
     cudaErrorCheck(cudaMalloc(&buffer->d_state_p, capacity * state_size * sizeof(float)));
@@ -75,6 +78,16 @@ TrajectoryBuffer* create_trajectory_buffer(int capacity, int state_size, int act
     cudaErrorCheck(cudaMalloc(&buffer->d_adv_target_p, capacity * sizeof(float)));
     cudaErrorCheck(cudaMalloc(&buffer->d_terminated_p, capacity * sizeof(bool)));
     cudaErrorCheck(cudaMalloc(&buffer->d_truncated_p, capacity * sizeof(bool)));
+
+    buffer->action_p = buffer->d_action_p;
+    buffer->state_p = buffer->d_state_p;
+    buffer->next_state_p = buffer->d_next_state_p;
+    buffer->reward_p = buffer->d_reward_p;
+    buffer->logprob_p = buffer->d_logprob_p;
+    buffer->advantage_p = buffer->d_advantage_p;
+    buffer->adv_target_p = buffer->d_adv_target_p;
+    buffer->terminated_p = buffer->d_terminated_p;
+    buffer->truncated_p = buffer->d_truncated_p;
 
     buffer->random_idx = NULL;
 
@@ -116,42 +129,77 @@ void free_trajectory_buffer(TrajectoryBuffer* buffer) {
     free(buffer);
 }
 
-void shuffle_buffer(TrajectoryBuffer* buffer){
-    int limit = buffer->full ? buffer->capacity : buffer->idx;
 
-    free(buffer->random_idx);
-    buffer->random_idx = (int*)malloc(limit * sizeof(int));
+// void shuffle_buffer(TrajectoryBuffer* buffer){
+//     int limit = buffer->full ? buffer->capacity : buffer->idx;
 
-    for (int i = 0; i < limit; i++) {
-        buffer->random_idx[i] = i;
+//     free(buffer->random_idx);
+//     buffer->random_idx = (int*)malloc(limit * sizeof(int));
+
+//     for (int i = 0; i < limit; i++) {
+//         buffer->random_idx[i] = i;
+//     }
+
+//     for (int i = 0; i < limit; i++) {
+//         int j = rand() % limit;
+//         int temp = buffer->random_idx[i];
+//         buffer->random_idx[i] = buffer->random_idx[j];
+//         buffer->random_idx[j] = temp;
+//     }
+// }
+
+// void get_batch(TrajectoryBuffer* buffer, int batch_idx, int batch_size, float* states, float* actions, float* logprobs, float* advantages, float* adv_targets) {
+//     int limit = buffer->full ? buffer->capacity : buffer->idx;
+
+//     int offset = batch_idx * batch_size;
+
+//     for (int i = 0; i < batch_size; i++) {
+//         int list_idx = (offset + i) % limit;\
+//         int idx = buffer->random_idx[list_idx];
+//         for (int j = 0; j < buffer->state_size; j++) {
+//             states[i * buffer->state_size + j] = buffer->state(buffer, idx)[j];
+//         }
+//         for (int j = 0; j < buffer->action_size; j++) {
+//             actions[i * buffer->action_size + j] = buffer->action(buffer, idx)[j];
+//         }
+//         logprobs[i] = *buffer->logprob(buffer, idx);
+//         advantages[i] = *buffer->advantage(buffer, idx);
+//         adv_targets[i] = *buffer->adv_target(buffer, idx);
+//     }
+// }
+
+__global__ void sample_batch_kernel(int batch_size, int buffer_size, int state_size, int action_size, float* states, float* actions, float* logprobs, float* advantages, float* adv_targets, float* action_p, float* state_p, float* logprob_p, float* advantage_p, float* adv_target_p) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    curandState state;
+    curand_init(1234, idx, 0, &state);
+    int random_idx = curand(&state) % buffer_size;
+
+    if (idx < batch_size) {
+        for (int i = 0; i < state_size; i++) {
+            states[idx * state_size + i] = state_p[random_idx * state_size + i];
+        }
+        for (int i = 0; i < action_size; i++) {
+            actions[idx * action_size + i] = action_p[random_idx * action_size + i];
+        }
+        logprobs[idx] = logprob_p[random_idx];
+        advantages[idx] = advantage_p[random_idx];
+        adv_targets[idx] = adv_target_p[random_idx];
     }
 
-    for (int i = 0; i < limit; i++) {
-        int j = rand() % limit;
-        int temp = buffer->random_idx[i];
-        buffer->random_idx[i] = buffer->random_idx[j];
-        buffer->random_idx[j] = temp;
-    }
 }
 
-void get_batch(TrajectoryBuffer* buffer, int batch_idx, int batch_size, float* states, float* actions, float* logprobs, float* advantages, float* adv_targets) {
+void sample_batch(TrajectoryBuffer* buffer, int batch_size, float* states, float* actions, float* logprobs, float* advantages, float* adv_targets){
+
     int limit = buffer->full ? buffer->capacity : buffer->idx;
 
-    int offset = batch_idx * batch_size;
+    int num_blocks = (batch_size + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
-    for (int i = 0; i < batch_size; i++) {
-        int list_idx = (offset + i) % limit;\
-        int idx = buffer->random_idx[list_idx];
-        for (int j = 0; j < buffer->state_size; j++) {
-            states[i * buffer->state_size + j] = buffer->state(buffer, idx)[j];
-        }
-        for (int j = 0; j < buffer->action_size; j++) {
-            actions[i * buffer->action_size + j] = buffer->action(buffer, idx)[j];
-        }
-        logprobs[i] = *buffer->logprob(buffer, idx);
-        advantages[i] = *buffer->advantage(buffer, idx);
-        adv_targets[i] = *buffer->adv_target(buffer, idx);
-    }
+    sample_batch_kernel<<<num_blocks, BLOCK_SIZE>>>(batch_size, limit, buffer->state_size, buffer->action_size, states, actions, logprobs, advantages, adv_targets, buffer->d_action_p, buffer->d_state_p, buffer->d_logprob_p, buffer->d_advantage_p, buffer->d_adv_target_p);
+
+    cudaDeviceSynchronize();
+
+    cudaKernelErrorCheck();
 }
 
 void reset_buffer(TrajectoryBuffer* buffer) {

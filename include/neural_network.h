@@ -9,12 +9,6 @@
 #include "mat_mul.h"
 #include "activation_function.h"
 
-
-typedef struct {
-    void (*activation)(float* x, int m, int n);
-    void (*activation_derivative)(float* x, float* grad, int m, int n);
-} ActivationFunction;
-
 typedef struct {
     float* weights;
     float* biases;

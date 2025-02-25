@@ -43,7 +43,7 @@ void test_nn(){
 
         printf("Out %f %f %f %f |  ", nn->output[0],  nn->output[1],  nn->output[2],  nn->output[3]);
 
-        backward_pass(nn, lossf, y_true, m);
+        // backward_pass(nn, lossf, y_true, m);
 
         adam_update(adam, 0.01);
     }
@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
 
     PPO* ppo = create_ppo(activation_functions, layer_sizes, num_layers, steps_per_fit, lr, lr, lambda, epsilon, ent_coeff, init_std);
 
-    eval_ppo(ppo, env, 3000);
+    // eval_ppo(ppo, env, 3000);
 
     for (int i = 0; i < n_epochs; i++) {
         clock_t tic = clock();

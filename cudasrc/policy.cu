@@ -1,27 +1,37 @@
 
 #include "policy.h"
 
+#include "constants.cuh"
+#include "cuda_helper.cuh"
+
+#include <curand_kernel.h>
 
 GaussianPolicy* create_gaussian_policy(int* layer_sizes, char** activation_functions, int num_layers, float init_std) {
     GaussianPolicy* policy = (GaussianPolicy*)malloc(sizeof(GaussianPolicy));
     policy->state_size = layer_sizes[0];
     policy->action_size = layer_sizes[num_layers - 1];
     policy->mu = create_neural_network(layer_sizes, activation_functions, num_layers);
-    policy->log_std = (float*)malloc(policy->action_size * sizeof(float));
-    policy->log_std_grad = (float*)malloc(policy->action_size * sizeof(float));
+    cudaErrorCheck(cudaMalloc(&policy->log_std, policy->action_size * sizeof(float)));
+    cudaErrorCheck(cudaMalloc(&policy->log_std_grad, policy->action_size * sizeof(float)));
+
+    // policy->log_std = (float*)malloc(policy->action_size * sizeof(float));
+    // policy->log_std_grad = (float*)malloc(policy->action_size * sizeof(float));
     policy->input_action = NULL;
 
-    for (int i = 0; i < policy->action_size; i++) {
-        policy->log_std[i] = logf(init_std);
-    }
+    cudaErrorCheck(cudaMemset(policy->log_std, logf(init_std), policy->action_size * sizeof(float)));
+    // for (int i = 0; i < policy->action_size; i++) {
+    //     policy->log_std[i] = logf(init_std);
+    // }
 
     return policy;
 }
 
 void free_gaussian_policy(GaussianPolicy* policy) {
     free_neural_network(policy->mu);
-    free(policy->log_std);
-    free(policy->log_std_grad);
+    // free(policy->log_std);
+    // free(policy->log_std_grad);
+    cudaErrorCheck(cudaFree(policy->log_std));
+    cudaErrorCheck(cudaFree(policy->log_std_grad));
     free(policy);
 }
 
@@ -56,18 +66,58 @@ float _compute_log_prob(float* mu, float* log_std, float* action, int action_siz
     return logprob;
 }
 
+__global__ void sample_action_kernel(float* mu, float* log_std, float* action, int action_size, int m) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    curandState curand_state;
+    curand_init(1234, idx, 0, &curand_state);
+
+    int transposed_idx = (idx % action_size) * m + idx / action_size;
+
+    action[idx] = mu[transposed_idx] + expf(log_std[idx % action_size]) * curand_normal(&curand_state);
+}
+
+__global__ void compute_log_prob_kernel(float* mu, float* log_std, float* action, float* out, int action_size, int m) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    int transposed_idx = (idx % action_size) * m + idx / action_size;
+
+    float temp_out = -0.5 * action_size *  logf(2 * M_PI);
+
+    for (int i = 0; i < action_size; i++){
+        temp_out -= log_std[idx % action_size] + 0.5 * powf((action[idx] - mu
+        [transposed_idx]) / expf(log_std[idx % action_size]), 2);
+    }
+    out[idx] = temp_out;
+}
+
 void sample_action(GaussianPolicy* policy, float* state, float* action, float* log_prob, int m) {
     forward_propagation(policy->mu, state, m);
 
-    float noise[m * policy->action_size];
-    generate_gaussian_noise(noise, m * policy->action_size);
+    // Smaller block size because we are doing more computation per thread
+    int block_size = 256;
 
-    for (int i = 0; i < m; i++) {
-        for (int j = 0; j < policy->action_size; j++) {
-            action[i * policy->action_size + j] = policy->mu->output[i * policy->action_size + j] + noise[i * policy->action_size + j] * expf(policy->log_std[j]);
-        }
-        log_prob[i] = _compute_log_prob(policy->mu->output + i * policy->action_size, policy->log_std, action + i * policy->action_size, policy->action_size);
-    }
+    sample_action_kernel<<<(m * policy->action_size + block_size - 1) / block_size, block_size>>>(policy->mu->output, policy->log_std, action, policy->action_size, m);
+
+    cudaDeviceSynchronize();
+
+    cudaKernelErrorCheck();
+
+    compute_log_prob_kernel<<<(m + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(policy->mu->output, policy->log_std, action, log_prob, policy->action_size, m);
+
+    cudaDeviceSynchronize();
+
+    cudaKernelErrorCheck();
+    // float noise[m * policy->action_size];
+    // generate_gaussian_noise(noise, m * policy->action_size);
+
+    // for (int i = 0; i < m; i++) {
+    //     for (int j = 0; j < policy->action_size; j++) {
+    //         // TODO action indexed wrong here because mu.T is computed i think
+    //         action[i * policy->action_size + j] = policy->mu->output[j * policy->action_size + i] + noise[i * policy->action_size + j] * expf(policy->log_std[j]);
+    //     }
+    //     log_prob[i] = _compute_log_prob(policy->mu->output + i * policy->action_size, policy->log_std, action + i * policy->action_size, policy->action_size);
+    // }
 }
 
 void compute_log_prob(GaussianPolicy* policy, float* out, float* state, float* action, int m) {
@@ -75,9 +125,17 @@ void compute_log_prob(GaussianPolicy* policy, float* out, float* state, float* a
 
     forward_propagation(policy->mu, state, m);
 
-    for (int i = 0; i < m; i++) {
-        out[i] = _compute_log_prob(policy->mu->output + i * policy->action_size, policy->log_std, action + i * policy->action_size, policy->action_size);
-    }
+    compute_log_prob_kernel<<<(m + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(policy->mu->output, policy->log_std, action, out, policy->action_size, m);
+
+    // for (int i = 0; i < m; i++) {
+    //     // TODO action indexed wrong here because mu.T is computed i think
+    //     float temp_action[policy->action_size];
+    //     for (int j = 0; j < policy->action_size; j++) {
+    //         temp_action[j] = action[j * policy->action_size + i];
+    //     }
+
+    //     out[i] = _compute_log_prob(temp_action, policy->log_std, action + i * policy->action_size, policy->action_size);
+    // }
 }
 
 void log_prob_backwards(GaussianPolicy* policy, float* grad_in, float* grad_mu, float* grad_log_std, int m) {

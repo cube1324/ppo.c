@@ -12,29 +12,37 @@ __global__ void mat_mul_kernel(float* out, float* x, float* weight, float* bias,
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (i < m && j < l) {
-        out[i * l + j] = bias[j];
+        float temp = bias[j];
         for (int k = 0; k < n; k++) {
-            out[i * l + j] += x[i * n + k] * weight[j * n + k];
+            temp += x[i * n + k] * weight[j * n + k];
         }
+        out[i * l + j] = temp;
     }
 }
 
-__global__ void mat_mul_backwards_kernel(float* grad_x, float* grad_weight, float* grad_in, float* x, float* weight, int m, int n, int l) {
+__global__ void mat_mul_backwards_kernel_grad_x(float* grad_x, float* grad_in, float* weight, int m, int n, int l) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (i < m && j < n) {
-        grad_x[i * n + j] = 0;
+        float temp = 0;
         for (int k = 0; k < l; k++) {
-            grad_x[i * n + j] += grad_in[i * l + k] * weight[k * n + j];
+            temp += grad_in[i * l + k] * weight[k * n + j];
         }
+        grad_x[i * n + j] = temp;
     }
+}
+
+__global__ void mat_mul_backwards_kernel_grad_weight(float* grad_weight, float* grad_in, float* x, int m, int n, int l) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (i < l && j < n) {
-        grad_weight[i * n + j] = 0;
+        float temp = 0;
         for (int k = 0; k < m; k++) {
-            grad_weight[i * n + j] += grad_in[k * l + i] * x[k * n + j];
+            temp += grad_in[k * l + i] * x[k * n + j];
         }
+        grad_weight[i * n + j] = temp;
     }
 }
 

@@ -64,6 +64,8 @@ void free_trajectory_buffer(TrajectoryBuffer* buffer);
 
 void shuffle_buffer(TrajectoryBuffer* buffer);
 void get_batch(TrajectoryBuffer* buffer, int batch_idx, int batch_size, float* states, float* actions, float* logprobs, float* advantages, float* adv_targets);
+void sample_batch(TrajectoryBuffer* buffer, int batch_size, float* states, float* actions, float* logprobs, float* advantages, float* adv_targets);
+
 
 void reset_buffer(TrajectoryBuffer* buffer);
 

@@ -8,6 +8,7 @@ PPO* create_ppo(char** activation_functions, int* layer_sizes, int num_layers, i
 
     PPO* ppo = (PPO*)malloc(sizeof(PPO));
     ppo->buffer = create_trajectory_buffer(buffer_size, layer_sizes[0], layer_sizes[num_layers - 1]);
+
     ppo->policy = create_gaussian_policy(layer_sizes, activation_functions, num_layers, init_std);
 
     int layer_sizes_v[num_layers];
@@ -41,28 +42,43 @@ void free_ppo(PPO* ppo) {
 
 
 void collect_trajectories(TrajectoryBuffer* buffer, Env* env, GaussianPolicy* policy, int steps) {
-    env->reset_env(buffer->state(buffer, buffer->idx));
+    float state[buffer->state_size];
+    float action[buffer->action_size];
+    float next_state[buffer->state_size];
+    float reward;
+    bool terminated;
+    bool truncated;
+
+    env->reset_env(state);
+
+    cudaErrorCheck(cudaMemcpy(buffer->state(buffer, buffer->idx), state, buffer->state_size * sizeof(float), cudaMemcpyHostToDevice));
 
     for (int i = 0; i < steps; i++) {
         sample_action(policy, buffer->state(buffer, buffer->idx), buffer->action(buffer, buffer->idx), buffer->logprob(buffer, buffer->idx), 1);
 
-        env->step_env(buffer->action(buffer, buffer->idx), buffer->next_state(buffer, buffer->idx), buffer->reward(buffer, buffer->idx), buffer->terminated(buffer, buffer->idx), buffer->truncated(buffer, buffer->idx), buffer->action_size);
+        cudaErrorCheck(cudaMemcpy(action, buffer->action(buffer, buffer->idx), buffer->action_size * sizeof(float), cudaMemcpyDeviceToHost));
 
-        int new_idx = (buffer->idx + 1) % buffer->capacity;
+        env->step_env(action, next_state, &reward, &terminated, &truncated, buffer->action_size);
 
         if (i < steps - 1) {
-            if (*buffer->truncated(buffer, buffer->idx) || *buffer->terminated(buffer, buffer->idx)) {
-                env->reset_env(buffer->state(buffer, new_idx));
+            if (truncated || terminated) {
+                env->reset_env(state);
             } else {
-                memcpy(buffer->state(buffer, new_idx), buffer->next_state(buffer, buffer->idx), buffer->state_size * sizeof(float));
+                memcpy(state, next_state, buffer->state_size * sizeof(float));
             }
         } else {
-            if (!*buffer->terminated(buffer, buffer->idx)) {
-                *buffer->truncated(buffer, buffer->idx) = true;
+            if (!terminated) {
+                truncated = true;
             }
         }
 
-        buffer->idx = new_idx;
+        cudaErrorCheck(cudaMemcpy(buffer->next_state(buffer, buffer->idx), next_state, buffer->state_size * sizeof(float), cudaMemcpyHostToDevice));
+        cudaErrorCheck(cudaMemcpy(buffer->reward(buffer, buffer->idx), &reward, sizeof(float), cudaMemcpyHostToDevice));
+        cudaErrorCheck(cudaMemcpy(buffer->terminated(buffer, buffer->idx), &terminated, sizeof(bool), cudaMemcpyHostToDevice));
+        cudaErrorCheck(cudaMemcpy(buffer->truncated(buffer, buffer->idx), &truncated, sizeof(bool), cudaMemcpyHostToDevice));
+
+
+        buffer->idx = (buffer->idx + 1) % buffer->capacity;
         buffer->full = buffer->full || buffer->idx == 0;
     }
 }
@@ -161,27 +177,25 @@ __global__ void normalize_advantage_kernel(float* advantage, float mean, float s
 void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float lambda) {
     int limit = buffer->full ? buffer->capacity : buffer->idx;
 
-    float v_next[limit];
-    forward_propagation(V, buffer->next_state_p, limit);
-    memcpy(v_next, V->output, limit * sizeof(float));
-
-    float v[limit];
-    forward_propagation(V, buffer->state_p, limit);
-    memcpy(v, V->output, limit * sizeof(float));
-
-    // float* v_next;
-    // cudaErrorCheck(cudaMalloc(&v_next, limit * sizeof(float)));
-
+    // float v_next[limit];
     // forward_propagation(V, buffer->next_state_p, limit);
-    // cudaErrorCheck(cudaMemcpy(v_next, V->output, limit * sizeof(float), cudaMemcpyDeviceToDevice));
+    // memcpy(v_next, V->output, limit * sizeof(float));
+
+    // float v[limit];
+    // forward_propagation(V, buffer->state_p, limit);
+    // memcpy(v, V->output, limit * sizeof(float));
+
+    float* v_next;
+    cudaErrorCheck(cudaMalloc(&v_next, limit * sizeof(float)));
+
+    forward_propagation(V, buffer->next_state_p, limit);
+    cudaErrorCheck(cudaMemcpy(v_next, V->output, limit * sizeof(float), cudaMemcpyDeviceToDevice));
     
-    // float* v;
-    // cudaErrorCheck(cudaMalloc(&v, limit * sizeof(float)));
+    float* v;
+    cudaErrorCheck(cudaMalloc(&v, limit * sizeof(float)));
 
-    // forward_propagation(V, buffer->state_p, limit);    
-    // cudaErrorCheck(cudaMemcpy(v, V->output, limit * sizeof(float), cudaMemcpyDeviceToDevice));
-
-    buffer_to_device(buffer);
+    forward_propagation(V, buffer->state_p, limit);    
+    cudaErrorCheck(cudaMemcpy(v, V->output, limit * sizeof(float), cudaMemcpyDeviceToDevice));
 
     float* d_v;
     cudaErrorCheck(cudaMalloc(&d_v, limit * sizeof(float)));
@@ -198,13 +212,25 @@ void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float 
 
     gae_compute_block_advantage_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, buffer->d_reward_p, d_v, d_v_next, buffer->d_terminated_p, buffer->d_truncated_p, terminated_temp, gamma, gamma * lambda, limit);
 
+    cudaDeviceSynchronize();
+
+    cudaKernelErrorCheck();
+
     gae_merge_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, terminated_temp, d_v, buffer->d_adv_target_p, gamma * lambda, limit);
+
+    cudaDeviceSynchronize();
+
+    cudaKernelErrorCheck();
 
     WelfordState block_states[n_blocks];
     WelfordState* d_block_states;
     cudaErrorCheck(cudaMalloc(&d_block_states, n_blocks * sizeof(WelfordState)));
 
     welford_var_kernel<<<n_blocks, BLOCK_SIZE, BLOCK_SIZE * sizeof(WelfordState)>>>(buffer->d_advantage_p, limit, d_block_states);
+
+    cudaDeviceSynchronize();
+
+    cudaKernelErrorCheck();
 
     cudaErrorCheck(cudaMemcpy(block_states, d_block_states, n_blocks * sizeof(WelfordState), cudaMemcpyDeviceToHost));
 
@@ -217,7 +243,9 @@ void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float 
 
     normalize_advantage_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, mean2, std2, limit);
 
-    buffer_to_host(buffer);
+    cudaDeviceSynchronize();
+
+    cudaKernelErrorCheck();
 
     cudaErrorCheck(cudaFree(d_v));
     cudaErrorCheck(cudaFree(d_v_next));
@@ -227,18 +255,32 @@ void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float 
 
 
 void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, int n_epochs_policy, int n_epochs_value) {
-    float states[batch_size * ppo->buffer->state_size];
-    float actions[batch_size * ppo->buffer->action_size];
-    float logprobs[batch_size];
-    float logprobs_old[batch_size];
-    float adv[batch_size];
-    float adv_target[batch_size];
+    float* states;
+    float* actions;
+    float* logprobs;
+    float* logprobs_old;
+    float* adv;
+    float* adv_target;
 
-    float policy_loss_grad[batch_size];
-    float mu_grad[batch_size * ppo->buffer->action_size];
-    float v_loss_grad[batch_size];
+    float* policy_loss_grad;
+    float* mu_grad;
+    float* v_loss_grad;
 
-    float entropy_grad;
+    float* entropy_grad;
+
+    cudaErrorCheck(cudaMalloc(&states, batch_size * ppo->buffer->state_size * sizeof(float)));
+    cudaErrorCheck(cudaMalloc(&actions, batch_size * ppo->buffer->action_size * sizeof(float)));
+    cudaErrorCheck(cudaMalloc(&logprobs, batch_size * sizeof(float)));
+    cudaErrorCheck(cudaMalloc(&logprobs_old, batch_size * sizeof(float)));
+    cudaErrorCheck(cudaMalloc(&adv, batch_size * sizeof(float)));
+    cudaErrorCheck(cudaMalloc(&adv_target, batch_size * sizeof(float)));
+
+    cudaErrorCheck(cudaMalloc(&policy_loss_grad, batch_size * sizeof(float)));
+    cudaErrorCheck(cudaMalloc(&mu_grad, batch_size * ppo->buffer->action_size * sizeof(float)));
+    cudaErrorCheck(cudaMalloc(&v_loss_grad, batch_size * sizeof(float)));
+
+    cudaErrorCheck(cudaMalloc(&entropy_grad, sizeof(float)));
+
 
     int num_batches_policy = ceilf(ppo->buffer->capacity / batch_size);
     int num_batches_value = ceilf(ppo->buffer->capacity / batch_size);
@@ -247,16 +289,18 @@ void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, in
     for (int i = 0; i < steps_per_epoch / ppo->buffer->capacity; i++) {
         collect_trajectories(ppo->buffer, env, ppo->policy, ppo->buffer->capacity);
 
+        // buffer_to_device(ppo->buffer);
+
         // Compute advantages
         compute_gae(ppo->V, ppo->buffer, env->gamma, ppo->lambda);
 
         float sum_v_loss = 0;
         for (int j = 0; j < n_epochs_value; j++) {
-            shuffle_buffer(ppo->buffer);
+            // shuffle_buffer(ppo->buffer);
 
             // Fit value function
             for (int k = 0; k < num_batches_value; k++) {
-                get_batch(ppo->buffer, k, batch_size, states, actions, logprobs_old, adv, adv_target);
+                sample_batch(ppo->buffer, batch_size, states, actions, logprobs_old, adv, adv_target);
 
                 forward_propagation(ppo->V, states, batch_size);
 
@@ -273,11 +317,11 @@ void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, in
         }
 
         for (int j = 0; j < n_epochs_policy; j++) {
-            shuffle_buffer(ppo->buffer);
+            // shuffle_buffer(ppo->buffer);
 
             for (int k = 0; k < num_batches_policy; k++) {
 
-                get_batch(ppo->buffer, k, batch_size, states, actions, logprobs_old, adv, adv_target);
+                sample_batch(ppo->buffer, batch_size, states, actions, logprobs_old, adv, adv_target);
 
                 // Compute policy loss
                 // SETS VALUES FOR GRAD COMPUTATION
@@ -285,14 +329,14 @@ void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, in
 
                 float entropy = compute_entropy(ppo->policy);
 
-                float policy_loss = policy_loss_and_grad(policy_loss_grad, &entropy_grad, adv, logprobs, logprobs_old, entropy, ppo->ent_coeff, ppo->epsilon, batch_size);
+                float policy_loss = policy_loss_and_grad(policy_loss_grad, entropy_grad, adv, logprobs, logprobs_old, entropy, ppo->ent_coeff, ppo->epsilon, batch_size);
 
                 log_prob_backwards(ppo->policy, policy_loss_grad, mu_grad, ppo->policy->log_std_grad, batch_size);
 
                 backward_propagation(ppo->policy->mu, mu_grad, batch_size);
 
                 for (int i = 0; i < ppo->policy->action_size; i++) {
-                    ppo->policy->log_std_grad[i] += entropy_grad;
+                    ppo->policy->log_std_grad[i] += *entropy_grad;
                 }
 
                 adam_update(ppo->adam_entropy, ppo->lr_policy);
@@ -302,6 +346,7 @@ void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, in
         }
 
         // printf("Iteration %d V loss: %f Entropy: %f\n", i, sum_v_loss / (n_epochs_value * num_batches_value),  compute_entropy(ppo->policy));
+        buffer_to_device(ppo->buffer);
     }
 }
 
