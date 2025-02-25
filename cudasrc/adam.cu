@@ -1,16 +1,40 @@
 
 #include "adam.h"
 
+#include "cuda_helper.cuh"
+#include "constants.cuh"
+
+
 Adam* create_adam(float** weights, float** grad_weights, int* length, int num_layers, int size, float beta1, float beta2) {
     Adam* adam = (Adam*)malloc(sizeof(Adam));
-    adam->m = (float*)calloc(size, sizeof(float));
-    adam->v = (float*)calloc(size, sizeof(float));
-    adam->weights = (float**)malloc(num_layers * sizeof(float*));
-    adam->grad_weights = (float**)malloc(num_layers * sizeof(float*));
-    adam->lengths = (int*)malloc(num_layers * sizeof(int));
-    memcpy(adam->weights, weights, num_layers * sizeof(float*));
-    memcpy(adam->grad_weights, grad_weights, num_layers * sizeof(float*));
-    memcpy(adam->lengths, length, num_layers * sizeof(int));
+    // adam->m = (float*)calloc(size, sizeof(float));
+    // adam->v = (float*)calloc(size, sizeof(float));
+    // adam->weights = (float**)malloc(num_layers * sizeof(float*));
+    // adam->grad_weights = (float**)malloc(num_layers * sizeof(float*));
+    // adam->lengths = (int*)malloc(num_layers * sizeof(int));
+    cudaErrorCheck(cudaMalloc(&adam->m, size * sizeof(float)));
+    cudaErrorCheck(cudaMalloc(&adam->v, size * sizeof(float)));
+    cudaErrorCheck(cudaMemset(adam->m, 0, size * sizeof(float)));
+    cudaErrorCheck(cudaMemset(adam->v, 0, size * sizeof(float)));
+
+    cudaErrorCheck(cudaMalloc(&adam->weights, num_layers * sizeof(float*)));
+    cudaErrorCheck(cudaMalloc(&adam->grad_weights, num_layers * sizeof(float*)));
+    cudaErrorCheck(cudaMalloc(&adam->lengths, num_layers * sizeof(int)));
+    
+    // memcpy(adam->weights, weights, num_layers * sizeof(float*));
+    // memcpy(adam->grad_weights, grad_weights, num_layers * sizeof(float*));
+    // memcpy(adam->lengths, length, num_layers * sizeof(int));
+
+    int presum_length[num_layers];
+
+    presum_length[0] = length[0];
+    for (int i = 1; i < num_layers; i++) {
+        presum_length[i] = presum_length[i - 1] + length[i];
+    }
+
+    cudaErrorCheck(cudaMemcpy(adam->weights, weights, num_layers * sizeof(float*), cudaMemcpyHostToDevice));
+    cudaErrorCheck(cudaMemcpy(adam->grad_weights, grad_weights, num_layers * sizeof(float*), cudaMemcpyHostToDevice));
+    cudaErrorCheck(cudaMemcpy(adam->lengths, presum_length, num_layers * sizeof(int), cudaMemcpyHostToDevice));
     
     adam->size = size;
     adam->beta1 = beta1;
@@ -40,12 +64,35 @@ Adam* create_adam_from_nn(NeuralNetwork* nn, float beta1, float beta2) {
 }
 
 void free_adam(Adam* adam) {
-    free(adam->weights);
-    free(adam->grad_weights);
-    free(adam->lengths);
-    free(adam->m);
-    free(adam->v);
+    cudaErrorCheck(cudaFree(adam->m));
+    cudaErrorCheck(cudaFree(adam->v));
+    cudaErrorCheck(cudaFree(adam->weights));
+    cudaErrorCheck(cudaFree(adam->grad_weights));
+    cudaErrorCheck(cudaFree(adam->lengths));
+    // free(adam->weights);
+    // free(adam->grad_weights);
+    // free(adam->lengths);
+    // free(adam->m);
+    // free(adam->v);
     free(adam);
+}
+
+
+__global__ void adam_update_kernel(float* m, float* v, float** weights, float** grad_weights, int* presum_length, int num_layers, float beta1, float beta2, float bias_correction2, float step_size, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < size) {
+        int layer = 0;
+        while (idx >= presum_length[layer]) {
+            layer++;
+        }
+        int residual_idx = idx - (layer == 0 ? 0 : presum_length[layer - 1]);
+
+        m[idx] = beta1 * m[idx] + (1 - beta1) * grad_weights[layer][residual_idx];
+        v[idx] = beta2 * v[idx] + (1 - beta2) * powf(grad_weights[layer][residual_idx], 2);
+        float denom = sqrtf(v[idx] / bias_correction2) + 1e-8;
+        weights[layer][residual_idx] -= step_size * m[idx] / denom;
+    }
 }
 
 void adam_update(Adam* adam, float lr) {
@@ -56,19 +103,25 @@ void adam_update(Adam* adam, float lr) {
 
     float step_size = lr / bias_correction1;
 
-    int current_idx = 0;
-    for (int i = 0; i < adam->num_layers; i++){
-        for (int j = 0; j < adam->lengths[i]; j++){
-            adam->m[current_idx] = adam->beta1 * adam->m[current_idx] + (1 - adam->beta1) * adam->grad_weights[i][j];
-            adam->v[current_idx] = adam->beta2 * adam->v[current_idx] + (1 - adam->beta2) * powf(adam->grad_weights[i][j], 2);
-        
-            float denom = sqrtf(adam->v[current_idx] / bias_correction2) + 1e-8;
-            
-            adam->weights[i][j] -= step_size * adam->m[current_idx] / denom;
+    adam_update_kernel<<<(adam->size + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(adam->m, adam->v, adam->weights, adam->grad_weights, adam->lengths, adam->num_layers, adam->beta1, adam->beta2, bias_correction2, step_size, adam->size);
 
-            current_idx++;
-        }
-    }
+    cudaDeviceSynchronize();
+
+    cudaKernelErrorCheck();
+    
+    // int current_idx = 0;
+    // for (int i = 0; i < adam->num_layers; i++){
+    //     for (int j = 0; j < adam->lengths[i]; j++){
+    //         adam->m[current_idx] = adam->beta1 * adam->m[current_idx] + (1 - adam->beta1) * adam->grad_weights[i][j];
+    //         adam->v[current_idx] = adam->beta2 * adam->v[current_idx] + (1 - adam->beta2) * powf(adam->grad_weights[i][j], 2);
+        
+    //         float denom = sqrtf(adam->v[current_idx] / bias_correction2) + 1e-8;
+            
+    //         adam->weights[i][j] -= step_size * adam->m[current_idx] / denom;
+
+    //         current_idx++;
+    //     }
+    // }
 }
 
 
