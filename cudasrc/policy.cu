@@ -150,10 +150,15 @@ void log_prob_backwards(GaussianPolicy* policy, float* grad_in, float* grad_mu, 
     }
 }
 
+
 float compute_entropy(GaussianPolicy* policy) {
+    float h_log_std[policy->action_size];
+
+    cudaErrorCheck(cudaMemcpy(h_log_std, policy->log_std, policy->action_size * sizeof(float), cudaMemcpyDeviceToHost));
+
     float entropy = policy->action_size * 0.5 * (1 + log(2 * M_PI));
     for (int j = 0; j < policy->action_size; j++) {
-        entropy += policy->log_std[j];
+        entropy += h_log_std[j];
     }
 
     return entropy;

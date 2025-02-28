@@ -1,6 +1,6 @@
 #ifndef CONSTANTS_CUH
 #define CONSTANTS_CUH
 
-#define BLOCK_SIZE 1024
+#define BLOCK_SIZE 512
 
 #endif // CONSTANTS_CUH

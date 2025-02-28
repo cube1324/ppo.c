@@ -83,32 +83,90 @@ void collect_trajectories(TrajectoryBuffer* buffer, Env* env, GaussianPolicy* po
     }
 }
 
+__global__ void policy_loss_kernel(float* block_loss, float* grad_logprob, float* adv, float* logprobs, float* old_logprobs, float entropy, float ent_coeff, float epsilon, int m) {
+    __shared__ float shared_sum[BLOCK_SIZE];
+    
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int tid = threadIdx.x;
+
+    if (idx < m){
+
+        float ratio = exp(logprobs[idx] - old_logprobs[idx]);
+
+        bool adv_pos = adv[idx] > 0;
+        bool ratio_pos = ratio > 1 + epsilon;
+        bool ratio_neg = ratio < 1 - epsilon;
+        
+        shared_sum[tid] = adv[idx] * (adv_pos * (ratio_pos * (1 + epsilon) + !ratio_pos * ratio) + !adv_pos * (ratio_neg * (1 - epsilon) + !ratio_neg * ratio));
+    
+        grad_logprob[idx] = -(adv_pos * !ratio_pos + !adv_pos * !ratio_neg) * adv[idx] * ratio / m; 
+    }
+    else{
+        shared_sum[tid] = 0.0f;
+    }
+
+    __syncthreads();
+
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            shared_sum[tid] += shared_sum[tid + stride];
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0) {
+        block_loss[blockIdx.x] = shared_sum[0] / m - ent_coeff * entropy;
+    }
+}
+    
+
 
 float policy_loss_and_grad(float* grad_logprob, float* grad_entropy, float* adv, float* logprobs,  float* old_logprobs, float entropy, float ent_coeff, float epsilon, int m) {
     
-    float loss = 0;
+    int n_blocks = (m + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    float block_loss[n_blocks];
 
-    float ratio;
-    float clipped_ratio;
+    float *d_block_loss;
+    cudaErrorCheck(cudaMalloc(&d_block_loss, n_blocks * sizeof(float)));
 
-    for (int i = 0; i < m; i++) {
-        ratio = exp(logprobs[i] - old_logprobs[i]);
+    cudaErrorCheck(cudaMalloc(&d_block_loss, n_blocks * sizeof(float)));
+    policy_loss_kernel<<<(m + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(d_block_loss, grad_logprob, adv, logprobs, old_logprobs, entropy, ent_coeff, epsilon, m);
 
-        bool adv_pos = adv[i] > 0;
-        bool ratio_pos = ratio > 1 + epsilon;
-        bool ratio_neg = ratio < 1 - epsilon;
+    cudaDeviceSynchronize();
 
-        loss -= adv[i] * (adv_pos * (ratio_pos * (1 + epsilon) + !ratio_pos * ratio) + !adv_pos * (ratio_neg * (1 - epsilon) + !ratio_neg * ratio)) ;
+    cudaKernelErrorCheck();
 
-        grad_logprob[i] = -(adv_pos * !ratio_pos + !adv_pos * !ratio_neg) * adv[i] * ratio / m;
+    cudaErrorCheck(cudaMemcpy(block_loss, d_block_loss, n_blocks * sizeof(float), cudaMemcpyDeviceToHost));
 
+    float loss = 0.0f;
+    for (int i = 0; i < n_blocks; i++) {
+        loss += block_loss[i];
     }
-    loss /= m;
-
-    loss -= ent_coeff * entropy;
-    *grad_entropy = -ent_coeff;
 
     return loss;
+    // float loss = 0;
+
+    // float ratio;
+    // float clipped_ratio;
+
+    // for (int i = 0; i < m; i++) {
+    //     ratio = exp(logprobs[i] - old_logprobs[i]);
+
+    //     bool adv_pos = adv[i] > 0;
+    //     bool ratio_pos = ratio > 1 + epsilon;
+    //     bool ratio_neg = ratio < 1 - epsilon;
+
+    //     loss -= adv[i] * (adv_pos * (ratio_pos * (1 + epsilon) + !ratio_pos * ratio) + !adv_pos * (ratio_neg * (1 - epsilon) + !ratio_neg * ratio)) ;
+
+    //     grad_logprob[i] = -(adv_pos * !ratio_pos + !adv_pos * !ratio_neg) * adv[i] * ratio / m;
+
+    // }
+    // loss /= m;
+
+    // loss -= ent_coeff * entropy;
+    // *grad_entropy = -ent_coeff;
+
+    // return loss;
 }
 
 __global__ void gae_compute_block_advantage_kernel(float* advantage, float* reward, float* v, float* v_next, bool* terminated, bool* truncated, bool* terminated_out, float gamma, float alpha, int n) {

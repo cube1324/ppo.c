@@ -75,7 +75,7 @@ NeuralNetwork* create_neural_network(int* layer_sizes, char** activation_functio
         float multiplier = sqrtf(3.0) * std;
 
         // Smaller block size because random needs more resources per thread
-        const int block_size = 512;
+        const int block_size = 256;
 
         int n_blocks = (layer_sizes[i] * layer_sizes[i + 1] + block_size - 1) / block_size;
 

@@ -193,9 +193,11 @@ void sample_batch(TrajectoryBuffer* buffer, int batch_size, float* states, float
 
     int limit = buffer->full ? buffer->capacity : buffer->idx;
 
-    int num_blocks = (batch_size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    const int block_size = 256;
 
-    sample_batch_kernel<<<num_blocks, BLOCK_SIZE>>>(batch_size, limit, buffer->state_size, buffer->action_size, states, actions, logprobs, advantages, adv_targets, buffer->d_action_p, buffer->d_state_p, buffer->d_logprob_p, buffer->d_advantage_p, buffer->d_adv_target_p);
+    int num_blocks = (batch_size + block_size - 1) / block_size;
+
+    sample_batch_kernel<<<num_blocks, block_size>>>(batch_size, limit, buffer->state_size, buffer->action_size, states, actions, logprobs, advantages, adv_targets, buffer->d_action_p, buffer->d_state_p, buffer->d_logprob_p, buffer->d_advantage_p, buffer->d_adv_target_p);
 
     cudaDeviceSynchronize();
 
