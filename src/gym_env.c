@@ -6,12 +6,6 @@ void init_env(int id, int seed, int* action_size, int* state_size, int* horizon)
 
     Py_Initialize();
 
-    // Add the directory containing gym_env.py to the Python path
-    PyObject *sys_path = PySys_GetObject("path");
-    PyObject *path = PyUnicode_DecodeFSDefault("../scripts");
-    PyList_Append(sys_path, path);
-    Py_DECREF(path);
-
     PyObject *pName = PyUnicode_DecodeFSDefault("gym_env");
     pModule = PyImport_Import(pName);
     Py_DECREF(pName);
