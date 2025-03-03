@@ -66,11 +66,11 @@ float _compute_log_prob(float* mu, float* log_std, float* action, int action_siz
     return logprob;
 }
 
-__global__ void sample_action_kernel(float* mu, float* log_std, float* action, int action_size, int m) {
+__global__ void sample_action_kernel(float* mu, float* log_std, float* action, int action_size, int m, long long int seed) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     curandState curand_state;
-    curand_init(1234, idx, 0, &curand_state);
+    curand_init(seed, idx, 0, &curand_state);
 
     int transposed_idx = (idx % action_size) * m + idx / action_size;
 
@@ -97,16 +97,16 @@ void sample_action(GaussianPolicy* policy, float* state, float* action, float* l
     // Smaller block size because we are doing more computation per thread
     int block_size = 256;
 
-    sample_action_kernel<<<(m * policy->action_size + block_size - 1) / block_size, block_size>>>(policy->mu->output, policy->log_std, action, policy->action_size, m);
+    long long int seed = time(NULL);
+
+    sample_action_kernel<<<(m * policy->action_size + block_size - 1) / block_size, block_size>>>(policy->mu->output, policy->log_std, action, policy->action_size, m, seed);
 
     cudaDeviceSynchronize();
-
     cudaKernelErrorCheck();
 
     compute_log_prob_kernel<<<(m + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(policy->mu->output, policy->log_std, action, log_prob, policy->action_size, m);
 
     cudaDeviceSynchronize();
-
     cudaKernelErrorCheck();
     // float noise[m * policy->action_size];
     // generate_gaussian_noise(noise, m * policy->action_size);
@@ -124,6 +124,12 @@ void compute_log_prob(GaussianPolicy* policy, float* out, float* state, float* a
     policy->input_action = action;
 
     forward_propagation(policy->mu, state, m);
+    
+    float h_state[m * policy->state_size];
+    float h_action[m * policy->action_size];
+
+    cudaErrorCheck(cudaMemcpy(h_state, state, m * policy->state_size * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaErrorCheck(cudaMemcpy(h_action, action, m * policy->action_size * sizeof(float), cudaMemcpyDeviceToHost));
 
     compute_log_prob_kernel<<<(m + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE>>>(policy->mu->output, policy->log_std, action, out, policy->action_size, m);
 
@@ -138,16 +144,54 @@ void compute_log_prob(GaussianPolicy* policy, float* out, float* state, float* a
     // }
 }
 
+__global__ void log_prob_backwards_kernel2(float* grad_in, float* grad_mu, float* grad_log_std, float* input_action, float* mu, float* log_std, int action_size, int m) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    int i = idx / action_size;
+    int j = idx % action_size;
+
+    grad_mu[idx] = (input_action[idx] - mu[idx]) * expf(-2 * log_std[j]) * grad_in[i * action_size + j];
+
+    atomicAdd(grad_log_std + j, (-1 + powf(input_action[idx] - mu[idx], 2) * expf(-2 * log_std[j])) * grad_in[i * action_size + j]);
+}
+
+__global__ void log_prob_backwards_kernel(
+    float* grad_in, float* grad_mu, float* grad_log_std, float* input_action, float* mu, float* log_std, int action_size, int m) {
+    // 2D grid layout for coalesced memory access
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    int i = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i >= m || j >= action_size) return;
+
+    const int index = i * action_size + j;
+    const float diff = input_action[index] - mu[index];
+    const float exp_neg2_log_std = expf(-2.0f * log_std[j]);
+
+    // Direct computation for grad_mu (coalesced write)
+    grad_mu[index] = diff * exp_neg2_log_std * grad_in[index];
+
+    // Thread-safe accumulation for grad_log_std
+    const float grad_term = (-1.0f + (diff * diff) * exp_neg2_log_std) * grad_in[index];
+    atomicAdd(&grad_log_std[j], grad_term);
+}
+
 void log_prob_backwards(GaussianPolicy* policy, float* grad_in, float* grad_mu, float* grad_log_std, int m) {
-    memset(grad_log_std, 0, policy->action_size * sizeof(float));
+    cudaErrorCheck(cudaMemset(grad_log_std, 0, policy->action_size * sizeof(float)));
 
-    for (int i = 0; i < m; i++) {
-        for (int j = 0; j < policy->action_size; j++) {
-            grad_mu[i * policy->action_size + j] = (policy->input_action[i * policy->action_size + j] - policy->mu->output[i * policy->action_size + j]) * expf(-2 * policy->log_std[j]) * grad_in[i * policy->action_size + j];
+    dim3 block_dim(policy->action_size, 512 / policy->action_size);
+    dim3 grid_dim(1, (m + block_dim.y - 1) / block_dim.y);
 
-            grad_log_std[j] += (-1 + powf(policy->input_action[i * policy->action_size + j] - policy->mu->output[i * policy->action_size + j], 2) * expf(-2 * policy->log_std[j])) * grad_in[i * policy->action_size + j];
-        }
-    }
+
+    log_prob_backwards_kernel<<<grid_dim, block_dim>>>(grad_in, grad_mu, grad_log_std, policy->input_action, policy->mu->output, policy->log_std, policy->action_size, m);
+    // memset(grad_log_std, 0, policy->action_size * sizeof(float));
+
+    // for (int i = 0; i < m; i++) {
+    //     for (int j = 0; j < policy->action_size; j++) {
+    //         grad_mu[i * policy->action_size + j] = (policy->input_action[i * policy->action_size + j] - policy->mu->output[i * policy->action_size + j]) * expf(-2 * policy->log_std[j]) * grad_in[i * policy->action_size + j];
+
+    //         grad_log_std[j] += (-1 + powf(policy->input_action[i * policy->action_size + j] - policy->mu->output[i * policy->action_size + j], 2) * expf(-2 * policy->log_std[j])) * grad_in[i * policy->action_size + j];
+    //     }
+    // }
 }
 
 

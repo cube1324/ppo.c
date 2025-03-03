@@ -171,6 +171,8 @@ void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, in
 
                 float v_loss = mean_squared_error(ppo->V->output, adv_target, batch_size, 1);
 
+                printf("V loss: %f\n", v_loss);
+
                 sum_v_loss += v_loss;
 
                 mean_squared_error_derivative(v_loss_grad, ppo->V->output, adv_target, batch_size, 1);
@@ -195,6 +197,8 @@ void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, in
                 float entropy = compute_entropy(ppo->policy);
 
                 float policy_loss = policy_loss_and_grad(policy_loss_grad, &entropy_grad, adv, logprobs, logprobs_old, entropy, ppo->ent_coeff, ppo->epsilon, batch_size);
+
+                printf("Policy loss: %f\n", policy_loss);
 
                 log_prob_backwards(ppo->policy, policy_loss_grad, mu_grad, ppo->policy->log_std_grad, batch_size);
 

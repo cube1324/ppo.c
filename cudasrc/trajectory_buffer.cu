@@ -171,9 +171,10 @@ void free_trajectory_buffer(TrajectoryBuffer* buffer) {
 __global__ void sample_batch_kernel(int batch_size, int buffer_size, int state_size, int action_size, float* states, float* actions, float* logprobs, float* advantages, float* adv_targets, float* action_p, float* state_p, float* logprob_p, float* advantage_p, float* adv_target_p) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    curandState state;
-    curand_init(1234, idx, 0, &state);
-    int random_idx = curand(&state) % buffer_size;
+    // curandState state;
+    // curand_init(1234, idx, 0, &state);
+    // int random_idx = curand(&state) % buffer_size;
+    int random_idx = idx;
 
     if (idx < batch_size) {
         for (int i = 0; i < state_size; i++) {

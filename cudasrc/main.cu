@@ -98,7 +98,7 @@ int main(int argc, char** argv) {
         train_ppo_epoch(ppo, env, steps_per_epoch, batch_size, n_epochs_policy, n_epochs_value);
         clock_t toc = clock();
         printf("Epoch: %d Entropy: %f Time %fs ", i, compute_entropy(ppo->policy), (double)(toc - tic) / CLOCKS_PER_SEC);
-        eval_ppo(ppo, env, 3000);
+        // eval_ppo(ppo, env, 3000);
     }
 
     save_ppo(ppo, "ppo_model.bin");

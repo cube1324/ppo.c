@@ -48,15 +48,20 @@ void collect_trajectories(TrajectoryBuffer* buffer, Env* env, GaussianPolicy* po
     float reward;
     bool terminated;
     bool truncated;
+    float logprob;
 
     env->reset_env(state);
 
-    cudaErrorCheck(cudaMemcpy(buffer->state(buffer, buffer->idx), state, buffer->state_size * sizeof(float), cudaMemcpyHostToDevice));
+    // cudaErrorCheck(cudaMemcpy(buffer->state(buffer, buffer->idx), state, buffer->state_size * sizeof(float), cudaMemcpyHostToDevice));
 
     for (int i = 0; i < steps; i++) {
+        cudaErrorCheck(cudaMemcpy(buffer->state(buffer, buffer->idx), state, buffer->state_size * sizeof(float), cudaMemcpyHostToDevice));
+        
         sample_action(policy, buffer->state(buffer, buffer->idx), buffer->action(buffer, buffer->idx), buffer->logprob(buffer, buffer->idx), 1);
 
         cudaErrorCheck(cudaMemcpy(action, buffer->action(buffer, buffer->idx), buffer->action_size * sizeof(float), cudaMemcpyDeviceToHost));
+
+        cudaErrorCheck(cudaMemcpy(&logprob, buffer->logprob(buffer, buffer->idx), sizeof(float), cudaMemcpyDeviceToHost));
 
         env->step_env(action, next_state, &reward, &terminated, &truncated, buffer->action_size);
 
@@ -81,6 +86,18 @@ void collect_trajectories(TrajectoryBuffer* buffer, Env* env, GaussianPolicy* po
         buffer->idx = (buffer->idx + 1) % buffer->capacity;
         buffer->full = buffer->full || buffer->idx == 0;
     }
+
+    float temp_states[buffer->state_size * buffer->capacity];
+    float temp_actions[buffer->action_size * buffer->capacity];
+    float temp_next_states[buffer->state_size * buffer->capacity];
+    float temp_rewards[buffer->capacity];
+    float temp_logprobs[buffer->capacity];
+
+    cudaErrorCheck(cudaMemcpy(temp_states, buffer->state_p, buffer->state_size * buffer->capacity * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaErrorCheck(cudaMemcpy(temp_actions, buffer->action_p, buffer->action_size * buffer->capacity * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaErrorCheck(cudaMemcpy(temp_next_states, buffer->next_state_p, buffer->state_size * buffer->capacity * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaErrorCheck(cudaMemcpy(temp_rewards, buffer->reward_p, buffer->capacity * sizeof(float), cudaMemcpyDeviceToHost));
+    cudaErrorCheck(cudaMemcpy(temp_logprobs, buffer->logprob_p, buffer->capacity * sizeof(float), cudaMemcpyDeviceToHost));
 }
 
 __global__ void policy_loss_kernel(float* block_loss, float* grad_logprob, float* adv, float* logprobs, float* old_logprobs, float entropy, float ent_coeff, float epsilon, int m) {
@@ -115,7 +132,7 @@ __global__ void policy_loss_kernel(float* block_loss, float* grad_logprob, float
     }
 
     if (tid == 0) {
-        block_loss[blockIdx.x] = shared_sum[0] / m - ent_coeff * entropy;
+        block_loss[blockIdx.x] = -shared_sum[0] / m - ent_coeff * entropy;
     }
 }
     
@@ -364,6 +381,7 @@ void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, in
 
                 float v_loss = mean_squared_error(ppo->V->output, adv_target, batch_size, 1);
 
+                printf("V loss: %f\n", v_loss);
                 sum_v_loss += v_loss;
 
                 mean_squared_error_derivative(v_loss_grad, ppo->V->output, adv_target, batch_size, 1);
@@ -385,17 +403,29 @@ void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, in
                 // SETS VALUES FOR GRAD COMPUTATION
                 compute_log_prob(ppo->policy, logprobs, states, actions, batch_size);
 
+                float h_states[batch_size * ppo->buffer->state_size];
+                float h_actions[batch_size * ppo->buffer->action_size];
+                float h_logprobs_old[batch_size];
+                float h_logprobs[batch_size];
+
+                cudaErrorCheck(cudaMemcpy(h_states, states, batch_size * ppo->buffer->state_size * sizeof(float), cudaMemcpyDeviceToHost));
+                cudaErrorCheck(cudaMemcpy(h_actions, actions, batch_size * ppo->buffer->action_size * sizeof(float), cudaMemcpyDeviceToHost));
+                cudaErrorCheck(cudaMemcpy(h_logprobs_old, logprobs_old, batch_size * sizeof(float), cudaMemcpyDeviceToHost));
+                cudaErrorCheck(cudaMemcpy(h_logprobs, logprobs, batch_size * sizeof(float), cudaMemcpyDeviceToHost));
+
                 float entropy = compute_entropy(ppo->policy);
 
                 float policy_loss = policy_loss_and_grad(policy_loss_grad, entropy_grad, adv, logprobs, logprobs_old, entropy, ppo->ent_coeff, ppo->epsilon, batch_size);
+
+                printf("Policy loss: %f\n", policy_loss);
 
                 log_prob_backwards(ppo->policy, policy_loss_grad, mu_grad, ppo->policy->log_std_grad, batch_size);
 
                 backward_propagation(ppo->policy->mu, mu_grad, batch_size);
 
-                for (int i = 0; i < ppo->policy->action_size; i++) {
-                    ppo->policy->log_std_grad[i] += *entropy_grad;
-                }
+                // for (int i = 0; i < ppo->policy->action_size; i++) {
+                //     ppo->policy->log_std_grad[i] += *entropy_grad;
+                // }
 
                 adam_update(ppo->adam_entropy, ppo->lr_policy);
 

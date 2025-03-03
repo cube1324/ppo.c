@@ -1,7 +1,7 @@
 CC = gcc
 NVCC = nvcc
 CFLAGS = -Ofast
-NVCCFLAGS = -g -G -lcurand
+NVCCFLAGS = -lcurand -g -G
 LDFLAGS = -lm -lpython3.10 -lopenblas
 
 SRCDIR = src
