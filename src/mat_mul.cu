@@ -1,10 +1,12 @@
 
 #include "mat_mul.h"
+#include "cuda_helper.h"
 
 #include <time.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <cblas.h>
+
 
 // x = m x n
 // weight = l x n
@@ -74,6 +76,72 @@ void mat_mul_backwards(float* grad_x, float* grad_weight, float* grad_in, float*
     //     }
     // }
     cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans, l, n, m, 1.0, grad_in, l, x, n, 1.0, grad_weight, n);
+}
+
+
+__global__ void mat_mul_kernel(float* out, float* x, float* weight, float* bias, int m, int n, int l) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i < m && j < l) {
+        float temp = bias[j];
+        for (int k = 0; k < n; k++) {
+            temp += x[i * n + k] * weight[j * n + k];
+        }
+        out[i * l + j] = temp;
+    }
+}
+
+__global__ void mat_mul_backwards_kernel_grad_x(float* grad_x, float* grad_in, float* weight, int m, int n, int l) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i < m && j < n) {
+        float temp = 0;
+        for (int k = 0; k < l; k++) {
+            temp += grad_in[i * l + k] * weight[k * n + j];
+        }
+        grad_x[i * n + j] = temp;
+    }
+}
+
+__global__ void mat_mul_backwards_kernel_grad_weight(float* grad_weight, float* grad_in, float* x, int m, int n, int l) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i < l && j < n) {
+        float temp = 0;
+        for (int k = 0; k < m; k++) {
+            temp += grad_in[k * l + i] * x[k * n + j];
+        }
+        grad_weight[i * n + j] = temp;
+    }
+}
+
+void mat_mul_cuda(float* out, float* x, float* weight, float* bias, int m, int n, int l){
+    dim3 block_size(32, 32);
+
+    dim3 grid_size(DIVUP(m, block_size.x), DIVUP(l, block_size.y));
+
+    mat_mul_kernel<<<grid_size, block_size>>>(out, x, weight, bias, m, n, l);
+
+    cudaDeviceSynchronize();
+    cudaCheckErrors();
+}
+
+void mat_mul_backwards_cuda(float* grad_x, float* grad_weight, float* grad_in, float* x, float* weight, int m, int n, int l){
+    dim3 block_size(32, 32);
+
+    dim3 grid_size(DIVUP(m, block_size.x), DIVUP(n, block_size.y));
+
+    mat_mul_backwards_kernel_grad_x<<<grid_size, block_size>>>(grad_x, grad_in, weight, m, n, l);
+
+    grid_size = dim3(DIVUP(l, block_size.x), DIVUP(n, block_size.y));
+
+    mat_mul_backwards_kernel_grad_weight<<<grid_size, block_size>>>(grad_weight, grad_in, x, m, n, l);
+
+    cudaDeviceSynchronize();
+    cudaCheckErrors();
 }
 
 // int main() {
