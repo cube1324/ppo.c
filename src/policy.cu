@@ -192,3 +192,7 @@ float compute_entropy_cuda(GaussianPolicy* policy){
     return entropy;
 }
 
+void policy_to_host(GaussianPolicy* policy) {
+    nn_write_weights_to_host(policy->mu);
+    cudaMemcpy(policy->log_std, policy->d_log_std, sizeof(float) * policy->action_size, cudaMemcpyDeviceToHost);
+}

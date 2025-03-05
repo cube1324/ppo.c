@@ -507,6 +507,7 @@ void _train_ppo_epoch_cuda(PPO* ppo, Env* env, int steps_per_epoch, int batch_si
 
         // printf("Iteration %d V loss: %f Entropy: %f\n", i, sum_v_loss / (n_epochs_value * num_batches_value),  compute_entropy(ppo->policy));
         buffer_to_host(ppo->buffer);
+        policy_to_host(ppo->policy);
     }
 }
 

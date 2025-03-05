@@ -34,8 +34,8 @@ void compute_log_prob_cuda(GaussianPolicy* policy, float* out, float* state, flo
 void log_prob_backwards_cuda(GaussianPolicy* policy, float* grad_in, float* grad_mu, float* grad_log_std, int m);
 float compute_entropy_cuda(GaussianPolicy* policy);
 
-
 float compute_entropy(GaussianPolicy* policy);
+void policy_to_host(GaussianPolicy* policy);
 
 #ifdef __cplusplus
 }
