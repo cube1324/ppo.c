@@ -39,7 +39,7 @@ int main(int argc, char** argv) {
     int n_epochs_value = 10;
     int steps_per_epoch = 30000;
     int steps_per_fit = 3000;
-    int n_epochs = 3;
+    int n_epochs = 10;
     bool use_cuda = true;
 
     PPO* ppo = create_ppo(activation_functions, layer_sizes, num_layers, steps_per_fit, lr, lr, lambda, epsilon, ent_coeff, init_std, use_cuda);
@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
         clock_t tic = clock();
         train_ppo_epoch(ppo, env, steps_per_epoch, batch_size, n_epochs_policy, n_epochs_value);
         clock_t toc = clock();
-        printf("Epoch: %d Entropy: %f Time %fs \n", i, compute_entropy(ppo->policy), (double)(toc - tic) / CLOCKS_PER_SEC);
+        printf("Epoch: %d Entropy: %f Time %fs ", i, compute_entropy(ppo->policy), (double)(toc - tic) / CLOCKS_PER_SEC);
         eval_ppo(ppo, env, 3000);
     }
 
