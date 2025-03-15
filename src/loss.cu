@@ -56,8 +56,8 @@ float mean_squared_error_cuda(float* y, float* y_true, int m, int n){
     float block_sums[BLOCK_SIZE];
     cudaMemcpy(block_sums, d_block_sums, sizeof(float) * (DIVUP(m * n, block_size)), cudaMemcpyDeviceToHost);
     
-    cudaDeviceSynchronize();
-    cudaCheckErrors();
+    //cudaDeviceSynchronize();
+    //cudaCheckErrors()
 
     float loss = 0.0;
     for (int i = 0; i < DIVUP(m * n, block_size); i++) {
@@ -78,6 +78,6 @@ void mean_squared_error_derivative_cuda(float* grad, float* y, float* y_true, in
     int block_size = BLOCK_SIZE < m * n ? BLOCK_SIZE : m * n;
     
     mean_squared_error_derivative_kernel<<<DIVUP(m * n, block_size), block_size>>>(grad, y, y_true, m, n);
-    cudaDeviceSynchronize();
-    cudaCheckErrors();
+    //cudaDeviceSynchronize();
+    //cudaCheckErrors()
 }

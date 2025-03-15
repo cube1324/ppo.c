@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <cuda_runtime.h>
+#include <cublas_v2.h>
 
 #include "mat_mul.h"
 #include "activation_function.h"
@@ -40,6 +42,8 @@ typedef struct {
     float* output;
     float* d_output;
     char** activation_functions;
+
+    cublasHandle_t cublas_handle;
 } NeuralNetwork;
 
 typedef struct {

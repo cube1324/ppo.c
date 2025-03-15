@@ -96,7 +96,7 @@ Adam* create_adam_cuda(float** weights, float** grad_weights, int* length, int n
     cudaMemcpy(adam->grad_weights, grad_weights, num_layers * sizeof(float*), cudaMemcpyHostToDevice);
     cudaMemcpy(adam->lengths, presum_length, num_layers * sizeof(int), cudaMemcpyHostToDevice);
 
-    cudaCheckErrors();
+    //cudaCheckErrors()
     
     adam->size = size;
     adam->beta1 = beta1;
@@ -164,8 +164,8 @@ void adam_update_cuda(Adam* adam, float lr){
 
     adam_update_kernel<<<DIVUP(adam->size, block_size), block_size>>>(adam->m, adam->v, adam->weights, adam->grad_weights, adam->lengths, adam->num_layers, adam->beta1, adam->beta2, bias_correction2, step_size, adam->size);
 
-    cudaDeviceSynchronize();
-    cudaCheckErrors();
+    //cudaDeviceSynchronize();
+    //cudaCheckErrors()
 }
 
 

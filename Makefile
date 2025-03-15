@@ -1,6 +1,6 @@
 CC = nvcc
-CFLAGS = -G -g #-O3
-LDFLAGS = -lm -lpython3.10 -lopenblas
+CFLAGS =  -O3 # -G -g #-O3
+LDFLAGS = -lm -lpython3.10 -lopenblas -lcublas
 
 SRCDIR = src
 OBJDIR = obj

@@ -149,8 +149,8 @@ float policy_loss_and_grad_cuda(float* grad_logprob, float* grad_entropy, float*
     float block_loss[BLOCK_SIZE];
     cudaMemcpy(block_loss, d_block_loss, sizeof(float) * n_blocks, cudaMemcpyDeviceToHost);
     
-    cudaDeviceSynchronize();
-    cudaCheckErrors();
+    //cudaDeviceSynchronize();
+    //cudaCheckErrors()
 
     float loss = 0.0;
     for (int i = 0; i < n_blocks; i++) {
@@ -250,19 +250,19 @@ void compute_gae_cuda(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, f
     bool* terminated_temp;
     cudaMalloc(&terminated_temp, limit * sizeof(bool));
 
-    cudaCheckErrors();
+    //cudaCheckErrors()
 
     const int n_blocks = DIVUP(limit, BLOCK_SIZE);
 
     gae_compute_block_advantage_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, buffer->d_reward_p, v, v_next, buffer->d_terminated_p, buffer->d_truncated_p, terminated_temp, gamma, gamma * lambda, limit);
 
-    cudaDeviceSynchronize();
-    cudaCheckErrors();
+    //cudaDeviceSynchronize();
+    //cudaCheckErrors()
 
     gae_merge_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, terminated_temp, v, buffer->d_adv_target_p, gamma * lambda, limit);
 
-    cudaDeviceSynchronize();
-    cudaCheckErrors();
+    //cudaDeviceSynchronize();
+    //cudaCheckErrors()
 
     WelfordState block_states[n_blocks];
     WelfordState* d_block_states;
@@ -270,8 +270,8 @@ void compute_gae_cuda(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, f
 
     welford_var_kernel<<<n_blocks, BLOCK_SIZE, BLOCK_SIZE * sizeof(WelfordState)>>>(buffer->d_advantage_p, limit, d_block_states);
 
-    cudaDeviceSynchronize();
-    cudaCheckErrors();
+    //cudaDeviceSynchronize();
+    //cudaCheckErrors()
 
     cudaMemcpy(block_states, d_block_states, n_blocks * sizeof(WelfordState), cudaMemcpyDeviceToHost);
 
@@ -284,8 +284,8 @@ void compute_gae_cuda(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, f
 
     normalize_advantage_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, mean2, std2, limit);
 
-    cudaDeviceSynchronize();
-    cudaCheckErrors();
+    //cudaDeviceSynchronize();
+    //cudaCheckErrors()
 
     cudaFree(v);
     cudaFree(v_next);
