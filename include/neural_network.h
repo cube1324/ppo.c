@@ -28,6 +28,8 @@ typedef struct {
     float* d_grad_biases;
     float* d_input;
 
+    float* d_grad_x;
+
     ActivationFunction* activation_function;
     ActivationFunction* d_activation_function;
     int input_size;
@@ -39,6 +41,10 @@ typedef struct {
     Layer* layers;
     int num_layers;
     int output_size;
+
+    int cache_m_forward;
+    int cache_m_backward;
+
     float* output;
     float* d_output;
     char** activation_functions;

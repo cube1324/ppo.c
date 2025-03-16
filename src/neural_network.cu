@@ -6,7 +6,9 @@
 NeuralNetwork* create_neural_network(int* layer_sizes, char** activation_functions, int num_layers) {
     NeuralNetwork* nn = (NeuralNetwork*)malloc(sizeof(NeuralNetwork));
     nn->num_layers = num_layers;
-    nn->layers = (Layer*)malloc((num_layers - 1) * sizeof(Layer));
+
+    // Allocate 1 to many layers  for easier computation
+    nn->layers = (Layer*)malloc(num_layers * sizeof(Layer));
     
     nn->activation_functions = (char**)malloc((num_layers - 1) * sizeof(char*));
     for (int i = 0; i < num_layers - 1; i++) {
@@ -30,6 +32,7 @@ NeuralNetwork* create_neural_network(int* layer_sizes, char** activation_functio
         cudaMalloc(&nn->layers[i].d_grad_biases, layer_sizes[i + 1] * sizeof(float));
         nn->layers[i].d_activation_function = build_activation_function_cuda(activation_functions[i]);
         nn->layers[i].d_input = NULL;
+        nn->layers[i].d_grad_x = NULL;
 
         //cudaCheckErrors()
 
@@ -48,10 +51,17 @@ NeuralNetwork* create_neural_network(int* layer_sizes, char** activation_functio
         }
     }
 
+    nn->layers[num_layers - 1].input_size = layer_sizes[num_layers - 1];
+    nn->layers[num_layers - 1].d_input = NULL;
+    nn->layers[num_layers - 1].d_grad_x = NULL;
+
     nn->output_size = nn->layers[num_layers - 2].output_size;
     nn->output = NULL;
 
     nn->d_output = NULL;
+
+    nn->cache_m_backward = 0;
+    nn->cache_m_forward = 0;
 
     nn_write_weights_to_device(nn);
 
@@ -62,44 +72,43 @@ NeuralNetwork* create_neural_network(int* layer_sizes, char** activation_functio
 }
 
 void forward_propagation_cuda(NeuralNetwork* nn, float* input, int m) {
-    cudaFree(nn->layers[0].d_input);
 
+    if (nn->cache_m_forward != m) {
+        cudaFree(nn->layers[0].d_input);
+
+
+        // cudaCheckErrors();
+
+        cudaMalloc(&nn->layers[0].d_input, m * nn->layers[0].input_size * sizeof(float));
+        
+        // cudaCheckErrors();
+    }
+
+    cudaMemcpy(nn->layers[0].d_input, input, m * nn->layers[0].input_size * sizeof(float), cudaMemcpyDeviceToDevice);
     //cudaCheckErrors()
 
-    cudaMalloc(&nn->layers[0].d_input, m * nn->layers[0].input_size * sizeof(float));
-    cudaMemcpy(nn->layers[0].d_input, input, m * nn->layers[0].input_size * sizeof(float), cudaMemcpyHostToDevice);
 
-    //cudaCheckErrors()
-
-    int last_idx = nn->num_layers - 2;
-
-    for (int i = 0; i < last_idx; i++) {
-        cudaFree(nn->layers[i + 1].d_input);
-
-        cudaMalloc(&nn->layers[i + 1].d_input, m * nn->layers[i + 1].input_size * sizeof(float));
+    for (int i = 0; i < nn->num_layers - 1; i++) {
+        if (nn->cache_m_forward != m) {
+            cudaFree(nn->layers[i + 1].d_input);
+            cudaMalloc(&nn->layers[i + 1].d_input, m * nn->layers[i + 1].input_size * sizeof(float));
+            cudaCheckErrors();
+        }
         mat_mul_cuda(nn->cublas_handle, nn->layers[i + 1].d_input, nn->layers[i].d_input, nn->layers[i].d_weights, nn->layers[i].d_biases, m, nn->layers[i].input_size, nn->layers[i].output_size);
 
-        //cudaCheckErrors()
+        cudaCheckErrors();
 
        
         if (nn->layers[i].d_activation_function->activation != NULL){
             nn->layers[i].d_activation_function->activation(nn->layers[i + 1].d_input, m, nn->layers[i + 1].input_size);
         }
     }
-    cudaFree(nn->d_output);
 
-    //cudaCheckErrors()
-
-    cudaMalloc(&nn->d_output, m * nn->output_size * sizeof(float));
-
-    //cudaCheckErrors()
-
-    mat_mul_cuda(nn->cublas_handle, nn->d_output, nn->layers[last_idx].d_input, nn->layers[last_idx].d_weights, nn->layers[last_idx].d_biases, m, nn->layers[last_idx].input_size, nn->output_size);
-
-    if (nn->layers[last_idx].d_activation_function->activation != NULL){
-        nn->layers[last_idx].d_activation_function->activation(nn->d_output, m, nn->output_size);
+    if (nn->cache_m_forward != m) {
+        nn->cache_m_forward = m;
     }
 
+    nn->d_output = nn->layers[nn->num_layers - 1].d_input;
 }
 
 
@@ -119,52 +128,43 @@ __global__ void sum_bias_gradients_kernel(float* grad_biases, const float* layer
 void backward_propagation_cuda(NeuralNetwork* nn, float* grad_in, int m) {
     // out = activation(x * w + b)
 
-    float* layer_grad;
-    cudaMalloc(&layer_grad, m * nn->output_size * sizeof(float));
-    cudaMemcpy(layer_grad, grad_in, m * nn->output_size * sizeof(float), cudaMemcpyHostToDevice);
-    
-    //cudaCheckErrors()
-
-    if (nn->layers[nn->num_layers - 2].d_activation_function->activation_derivative != NULL) {
-        nn->layers[nn->num_layers - 2].d_activation_function->activation_derivative(nn->d_output, layer_grad, m, nn->output_size);
+    // float* layer_grad;
+    if (nn->cache_m_backward != m) {
+        cudaFree(nn->layers[nn->num_layers - 1].d_grad_x);
+        cudaMalloc(&nn->layers[nn->num_layers - 1].d_grad_x, m * nn->output_size * sizeof(float));
+        //cudaCheckErrors()
     }
+    cudaMemcpy(nn->layers[nn->num_layers - 1].d_grad_x, grad_in, m * nn->output_size * sizeof(float), cudaMemcpyHostToDevice);
 
-    //cudaCheckErrors()
 
     for (int i = nn->num_layers - 2; i >= 0; i--) {
 
-        float* temp_grad_x;
-        cudaMalloc(&temp_grad_x, m * nn->layers[i].input_size * sizeof(float));
+        if (nn->cache_m_backward != m) {
+            cudaFree(nn->layers[i].d_grad_x);
+            cudaMalloc(&nn->layers[i].d_grad_x, m * nn->layers[i].input_size * sizeof(float));
+            //cudaCheckErrors()
+        }
+
+        if (nn->layers[i].d_activation_function->activation_derivative != NULL) {
+            nn->layers[i].d_activation_function->activation_derivative(nn->layers[i + 1].d_input, nn->layers[i + 1].d_grad_x, m, nn->layers[i + 1].input_size);
+        }
         
-        //cudaCheckErrors()
-        // cudaMemset(nn->layers[i].d_grad_weights, 0.0, nn->layers[i].input_size * nn->layers[i].output_size * sizeof(float));
-        // cudaMemset(nn->layers[i].d_grad_biases, 0.0, nn->layers[i].output_size * sizeof(float));
-        
-        //cudaCheckErrors()
+        cudaCheckErrors();
 
         // Sum over m for derivative with respect to b
-        sum_bias_gradients_kernel<<<DIVUP(nn->layers[i].output_size, BLOCK_SIZE), BLOCK_SIZE>>>(nn->layers[i].d_grad_biases, layer_grad, nn->layers[i].output_size, m);
+        sum_bias_gradients_kernel<<<DIVUP(nn->layers[i].output_size, BLOCK_SIZE), BLOCK_SIZE>>>(nn->layers[i].d_grad_biases, nn->layers[i + 1].d_grad_x, nn->layers[i].output_size, m);
 
-        //cudaDeviceSynchronize();
-        //cudaCheckErrors()
+        // cudaDeviceSynchronize();
+        // cudaCheckErrors();
 
 
-        mat_mul_backwards_cuda(nn->cublas_handle, temp_grad_x, nn->layers[i].d_grad_weights, layer_grad, nn->layers[i].d_input, nn->layers[i].d_weights, m, nn->layers[i].input_size, nn->layers[i].output_size);
-        // x * w.T + b
-
-        cudaFree(layer_grad);
-        layer_grad = temp_grad_x;
-
-        if (i > 0 && nn->layers[i - 1].d_activation_function->activation_derivative != NULL) {
-            nn->layers[i - 1].d_activation_function->activation_derivative(nn->layers[i].d_input, layer_grad, m, nn->layers[i].input_size);
-        }
-        cudaFree(nn->layers[i].d_input);
-        nn->layers[i].d_input = NULL;
-
-        //cudaCheckErrors()
-
+        mat_mul_backwards_cuda(nn->cublas_handle, nn->layers[i].d_grad_x, nn->layers[i].d_grad_weights, nn->layers[i + 1].d_grad_x, nn->layers[i].d_input, nn->layers[i].d_weights, m, nn->layers[i].input_size, nn->layers[i].output_size);
     }
-    cudaFree(layer_grad);
+
+    if (nn->cache_m_backward != m) {
+        nn->cache_m_backward = m;
+    }
+    // cudaFree(layer_grad);
 }
 
 void forward_propagation(NeuralNetwork* nn, float* input, int m) {
