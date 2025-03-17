@@ -39,7 +39,7 @@ int main(int argc, char** argv) {
     int n_epochs_value = 10;
     int steps_per_epoch = 30000;
     int steps_per_fit = 3000;
-    int n_epochs = 1;
+    int n_epochs = 10;
     bool use_cuda = true;
 
     PPO* ppo = create_ppo(activation_functions, layer_sizes, num_layers, steps_per_fit, lr, lr, lambda, epsilon, ent_coeff, init_std, use_cuda);
