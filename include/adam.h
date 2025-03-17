@@ -33,9 +33,9 @@ void adam_update_cuda(Adam* adam, float lr);
 
 
 
-void save_adam(Adam* adam, FILE* file);
-Adam* load_adam(FILE* file, float** weights, float** grad_weights, int* length);
-Adam* load_adam_from_nn(FILE* file, NeuralNetwork* nn);
+void save_adam(Adam* adam, FILE* file, bool cuda);
+Adam* load_adam(FILE* file, float** weights, float** grad_weights, int* length, bool cuda);
+Adam* load_adam_from_nn(FILE* file, NeuralNetwork* nn, bool cuda);
 
 
 #ifdef __cplusplus

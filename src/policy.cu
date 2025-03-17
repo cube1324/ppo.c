@@ -34,9 +34,11 @@ void free_gaussian_policy(GaussianPolicy* policy) {
     free_neural_network(policy->mu);
     free(policy->log_std);
     free(policy->log_std_grad);
+    free(policy->input_action);
 
     cudaFree(policy->d_log_std);
     cudaFree(policy->d_log_std_grad);
+    cudaFree(policy->d_input_action);
     free(policy);
 }
 
@@ -195,4 +197,33 @@ float compute_entropy_cuda(GaussianPolicy* policy){
 void policy_to_host(GaussianPolicy* policy) {
     nn_write_weights_to_host(policy->mu);
     cudaMemcpy(policy->log_std, policy->d_log_std, sizeof(float) * policy->action_size, cudaMemcpyDeviceToHost);
+}
+
+
+void save_policy(GaussianPolicy* policy, FILE* file){
+    fwrite(policy->log_std, sizeof(float), policy->action_size, file);
+
+    save_neural_network(policy->mu, file);
+}
+
+GaussianPolicy* load_policy(FILE* file, int state_size, int action_size) {
+    GaussianPolicy* policy = (GaussianPolicy*)malloc(sizeof(GaussianPolicy));
+    policy->state_size = state_size;
+    policy->action_size = action_size;
+    policy->log_std = (float*)malloc(action_size * sizeof(float));
+    policy->log_std_grad = (float*)malloc(action_size * sizeof(float));
+
+    cudaMalloc(&policy->d_log_std, sizeof(float) * action_size);
+    cudaMalloc(&policy->d_log_std_grad, sizeof(float) * action_size);
+
+    fread(policy->log_std, sizeof(float), action_size, file);
+    
+    cudaMemcpy(policy->d_log_std, policy->log_std, sizeof(float) * action_size, cudaMemcpyHostToDevice);
+    
+    policy->mu = load_neural_network(file);
+    
+    policy->input_action = NULL;
+    policy->d_input_action = NULL;
+
+    return policy;
 }

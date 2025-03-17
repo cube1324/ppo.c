@@ -37,6 +37,9 @@ float compute_entropy_cuda(GaussianPolicy* policy);
 float compute_entropy(GaussianPolicy* policy);
 void policy_to_host(GaussianPolicy* policy);
 
+void save_policy(GaussianPolicy* policy, FILE* file);
+GaussianPolicy* load_policy(FILE* file, int state_size, int action_size);
+
 #ifdef __cplusplus
 }
 #endif

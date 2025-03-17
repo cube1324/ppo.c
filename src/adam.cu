@@ -164,55 +164,101 @@ void adam_update_cuda(Adam* adam, float lr){
 
     adam_update_kernel<<<DIVUP(adam->size, block_size), block_size>>>(adam->m, adam->v, adam->weights, adam->grad_weights, adam->lengths, adam->num_layers, adam->beta1, adam->beta2, bias_correction2, step_size, adam->size);
 
-    //cudaDeviceSynchronize();
-    //cudaCheckErrors()
+    // cudaDeviceSynchronize();
+    // cudaCheckErrors();
 }
 
 
-void save_adam(Adam* adam, FILE* file) {
+void save_adam(Adam* adam, FILE* file, bool cuda) {
     fwrite(&adam->size, sizeof(int), 1, file);
     fwrite(&adam->time_step, sizeof(int), 1, file);
     fwrite(&adam->beta1, sizeof(float), 1, file);
     fwrite(&adam->beta2, sizeof(float), 1, file);
     fwrite(&adam->num_layers, sizeof(int), 1, file);
-    fwrite(adam->m, sizeof(float), adam->size, file);
-    fwrite(adam->v, sizeof(float), adam->size, file);
+    if (cuda) {
+        float m[adam->size];
+        float v[adam->size];
+        cudaMemcpy(m, adam->m, adam->size * sizeof(float), cudaMemcpyDeviceToHost);
+        cudaMemcpy(v, adam->v, adam->size * sizeof(float), cudaMemcpyDeviceToHost);        
+        fwrite(m, sizeof(float), adam->size, file);
+        fwrite(v, sizeof(float), adam->size, file);
+    } else {
+        fwrite(adam->m, sizeof(float), adam->size, file);
+        fwrite(adam->v, sizeof(float), adam->size, file);
+    }
 }
 
-Adam* load_adam(FILE* file, float** weights, float** grad_weights, int* length) {
+Adam* load_adam(FILE* file, float** weights, float** grad_weights, int* length, bool cuda) {
     Adam* adam = (Adam*)malloc(sizeof(Adam));
     fread(&adam->size, sizeof(int), 1, file);
     fread(&adam->time_step, sizeof(int), 1, file);
     fread(&adam->beta1, sizeof(float), 1, file);
     fread(&adam->beta2, sizeof(float), 1, file);
     fread(&adam->num_layers, sizeof(int), 1, file);
-    adam->m = (float*)malloc(adam->size * sizeof(float));
-    adam->v = (float*)malloc(adam->size * sizeof(float));
-    fread(adam->m, sizeof(float), adam->size, file);
-    fread(adam->v, sizeof(float), adam->size, file);
 
-    adam->weights = (float**)malloc(adam->num_layers * sizeof(float*));
-    adam->grad_weights = (float**)malloc(adam->num_layers * sizeof(float*));
-    adam->lengths = (int*)malloc(adam->num_layers * sizeof(int));
+    if (cuda) {
+        float m[adam->size];
+        float v[adam->size];
+        fread(m, sizeof(float), adam->size, file);
+        fread(v, sizeof(float), adam->size, file);
 
-    memcpy(adam->weights, weights, adam->num_layers * sizeof(float*));
-    memcpy(adam->grad_weights, grad_weights, adam->num_layers * sizeof(float*));
-    memcpy(adam->lengths, length, adam->num_layers * sizeof(int));
+        cudaMalloc(&adam->m, adam->size * sizeof(float));
+        cudaMalloc(&adam->v, adam->size * sizeof(float));
+        cudaMemcpy(adam->m, m, adam->size * sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(adam->v, v, adam->size * sizeof(float), cudaMemcpyHostToDevice);
+
+        cudaMalloc(&adam->weights, adam->num_layers * sizeof(float*));
+        cudaMalloc(&adam->grad_weights, adam->num_layers * sizeof(float*));
+        cudaMalloc(&adam->lengths, adam->num_layers * sizeof(int));
+
+        int presum_length[adam->num_layers];
+        presum_length[0] = length[0];
+        for (int i = 1; i < adam->num_layers; i++) {
+            presum_length[i] = presum_length[i - 1] + length[i];
+        }
+        cudaMemcpy(adam->weights, weights, adam->num_layers * sizeof(float*), cudaMemcpyHostToDevice);
+        cudaMemcpy(adam->grad_weights, grad_weights, adam->num_layers * sizeof(float*), cudaMemcpyHostToDevice);
+        cudaMemcpy(adam->lengths, presum_length, adam->num_layers * sizeof(int), cudaMemcpyHostToDevice);
+
+        cudaCheckErrors();
+
+    } else {
+        adam->m = (float*)malloc(adam->size * sizeof(float));
+        adam->v = (float*)malloc(adam->size * sizeof(float));
+        fread(adam->m, sizeof(float), adam->size, file);
+        fread(adam->v, sizeof(float), adam->size, file);
+
+        adam->weights = (float**)malloc(adam->num_layers * sizeof(float*));
+        adam->grad_weights = (float**)malloc(adam->num_layers * sizeof(float*));
+        adam->lengths = (int*)malloc(adam->num_layers * sizeof(int));
+
+        memcpy(adam->weights, weights, adam->num_layers * sizeof(float*));
+        memcpy(adam->grad_weights, grad_weights, adam->num_layers * sizeof(float*));
+        memcpy(adam->lengths, length, adam->num_layers * sizeof(int));
+    }
     return adam;
 }
 
-Adam* load_adam_from_nn(FILE* file, NeuralNetwork* nn) {
+Adam* load_adam_from_nn(FILE* file, NeuralNetwork* nn, bool cuda) {
     float* weights[2 * nn->num_layers - 1];
     float* grad_weights[2 * nn->num_layers - 1];
     int length[2 * nn->num_layers - 1];
 
     for (int i = 0; i < nn->num_layers - 1; i++) {
-        weights[i * 2] = nn->layers[i].weights;
-        weights[i * 2 + 1] = nn->layers[i].biases;
-        grad_weights[i * 2] = nn->layers[i].grad_weights;
-        grad_weights[i * 2 + 1] = nn->layers[i].grad_biases;
+        if (cuda) {
+            weights[i * 2] = nn->layers[i].d_weights;
+            weights[i * 2 + 1] = nn->layers[i].d_biases;
+            grad_weights[i * 2] = nn->layers[i].d_grad_weights;
+            grad_weights[i * 2 + 1] = nn->layers[i].d_grad_biases;
+        } else {
+            weights[i * 2] = nn->layers[i].weights;
+            weights[i * 2 + 1] = nn->layers[i].biases;
+            grad_weights[i * 2] = nn->layers[i].grad_weights;
+            grad_weights[i * 2 + 1] = nn->layers[i].grad_biases;
+        }
+
         length[i * 2] = nn->layers[i].input_size * nn->layers[i].output_size;
         length[i * 2 + 1] = nn->layers[i].output_size;
     }
-    return load_adam(file, weights, grad_weights, length);
+    return load_adam(file, weights, grad_weights, length, cuda);
 }

@@ -267,9 +267,13 @@ void free_neural_network(NeuralNetwork* nn) {
         cudaFree(nn->layers[i].d_grad_weights);
         cudaFree(nn->layers[i].d_grad_biases);
         cudaFree(nn->layers[i].d_input);
+        cudaFree(nn->layers[i].d_grad_x);
 
         free(nn->layers[i].d_activation_function);
     }
+
+    cudaFree(nn->layers[nn->num_layers - 1].d_grad_x);
+    cudaFree(nn->layers[nn->num_layers - 1].d_input);
 
     for (int i = 0; i < nn->num_layers - 1; i++) {
         free(nn->activation_functions[i]);
@@ -309,7 +313,7 @@ NeuralNetwork* load_neural_network(FILE* file) {
     fread(&nn->num_layers, sizeof(int), 1, file);
     fread(&nn->output_size, sizeof(int), 1, file);
 
-    nn->layers = (Layer*)malloc((nn->num_layers - 1) * sizeof(Layer));
+    nn->layers = (Layer*)malloc(nn->num_layers * sizeof(Layer));
 
     nn->activation_functions = (char**)malloc((nn->num_layers - 1) * sizeof(char*));
     for (int i = 0; i < nn->num_layers - 1; i++) {
@@ -332,9 +336,30 @@ NeuralNetwork* load_neural_network(FILE* file) {
 
         fread(nn->layers[i].weights, sizeof(float), nn->layers[i].input_size * nn->layers[i].output_size, file);
         fread(nn->layers[i].biases, sizeof(float), nn->layers[i].output_size, file);
+
+        nn->layers[i].d_input = NULL;
+        nn->layers[i].d_grad_x = NULL;
+
+        cudaMalloc(&nn->layers[i].d_weights, nn->layers[i].input_size * nn->layers[i].output_size * sizeof(float));
+        cudaMalloc(&nn->layers[i].d_biases, nn->layers[i].output_size * sizeof(float));
+        cudaMalloc(&nn->layers[i].d_grad_weights, nn->layers[i].input_size * nn->layers[i].output_size * sizeof(float));
+        cudaMalloc(&nn->layers[i].d_grad_biases, nn->layers[i].output_size * sizeof(float));
+        nn->layers[i].d_activation_function = build_activation_function_cuda(nn->activation_functions[i]);
     }
 
+    nn->layers[nn->num_layers - 1].input_size = nn->output_size;
+    nn->layers[nn->num_layers - 1].d_input = NULL;
+    nn->layers[nn->num_layers - 1].d_grad_x = NULL;
+
     nn->output = NULL;
+    nn->d_output = NULL;
+
+    nn->cache_m_backward = 0;
+    nn->cache_m_forward = 0;
+
+    nn_write_weights_to_device(nn);
+
+    cublasCreate(&nn->cublas_handle);
 
     return nn;
 }

@@ -44,7 +44,7 @@ void eval_ppo(PPO* ppo, Env* env, int steps);
 
 void save_ppo(PPO* ppo, const char* filename);
 
-PPO* load_ppo(const char* filename);
+PPO* load_ppo(const char* filename, bool use_cuda);
 
 #ifdef __cplusplus
 }
