@@ -60,7 +60,14 @@ make debug
 make clean
 ```
 
-### CPU-Only Version
+## CPU-Only Version
 
 Pure C version without CUDA available on the `plain_c` branch
 
+## Troubleshooting
+
+If the python linking fails make sure its python version 3.10, the conda env is active or you have set
+
+```sh
+export LD_LIBRARY_PATH=$HOME/miniconda3/envs/ppo_env/lib:$LD_LIBRARY_PATH
+```
