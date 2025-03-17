@@ -64,7 +64,7 @@ struct TrajectoryBuffer
 
 
 TrajectoryBuffer* create_trajectory_buffer(int capacity, int state_size, int action_size);
-void free_trajectory_buffer(TrajectoryBuffer* buffer);
+void free_trajectory_buffer(TrajectoryBuffer* buffer, bool use_cuda);
 
 void shuffle_buffer(TrajectoryBuffer* buffer);
 void get_batch(TrajectoryBuffer* buffer, int batch_idx, int batch_size, float* states, float* actions, float* logprobs, float* advantages, float* adv_targets);

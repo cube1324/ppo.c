@@ -94,7 +94,7 @@ TrajectoryBuffer* create_trajectory_buffer(int capacity, int state_size, int act
 }
 
 
-void free_trajectory_buffer(TrajectoryBuffer* buffer) {
+void free_trajectory_buffer(TrajectoryBuffer* buffer, bool use_cuda) {
     free(buffer->action_p);
     free(buffer->state_p);
     free(buffer->next_state_p);
@@ -104,8 +104,12 @@ void free_trajectory_buffer(TrajectoryBuffer* buffer) {
     free(buffer->adv_target_p);
     free(buffer->terminated_p);
     free(buffer->truncated_p);
-    free(buffer->random_idx);
 
+    if (use_cuda){
+        cudaFree(buffer->random_idx);
+    } else{
+        free(buffer->random_idx);
+    }
     cudaFree(buffer->d_action_p);
     cudaFree(buffer->d_state_p);
     cudaFree(buffer->d_next_state_p);

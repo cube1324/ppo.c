@@ -44,7 +44,7 @@ void free_ppo(PPO* ppo) {
         free_adam(ppo->adam_V);
         free_adam(ppo->adam_entropy);
     }
-    free_trajectory_buffer(ppo->buffer);
+    free_trajectory_buffer(ppo->buffer, ppo->use_cuda);
     free_gaussian_policy(ppo->policy);
     free_neural_network(ppo->V);
     free(ppo);
