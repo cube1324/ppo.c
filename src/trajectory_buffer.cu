@@ -66,7 +66,7 @@ TrajectoryBuffer* create_trajectory_buffer(int capacity, int state_size, int act
     cudaMalloc(&buffer->d_terminated_p, capacity * sizeof(bool));
     cudaMalloc(&buffer->d_truncated_p, capacity * sizeof(bool));
 
-    //cudaCheckErrors()
+    cudaCheckErrors();
 
     buffer->action_p = buffer->h_action_p;
     buffer->state_p = buffer->h_state_p;
@@ -162,7 +162,7 @@ void shuffle_buffer_cuda(TrajectoryBuffer* buffer){
     cudaMemcpy(buffer->random_idx, h_random_idx, limit * sizeof(int), cudaMemcpyHostToDevice);
     free(h_random_idx);
  
-    //cudaCheckErrors()
+    cudaCheckErrors();
 }
 
 __global__ void get_batch_kernel(const int* random_idx, const float* states, const float* actions, const float* logprobs, const float* advantages, const float* adv_targets, float* states_batch, float* actions_batch, float* logprobs_batch, float* advantages_batch, float* adv_targets_batch, int offset, int limit, int batch_size, int state_size, int action_size) {
@@ -194,8 +194,8 @@ void get_batch_cuda(TrajectoryBuffer* buffer, int batch_idx, int batch_size, flo
 
     get_batch_kernel<<<(DIVUP(batch_size, block_size)), block_size>>>(buffer->random_idx, buffer->state_p, buffer->action_p, buffer->logprob_p, buffer->advantage_p, buffer->adv_target_p, states, actions, logprobs, advantages, adv_targets, offset, limit, batch_size, buffer->state_size, buffer->action_size);
 
-    //cudaDeviceSynchronize();
-    //cudaCheckErrors()
+    
+    cudaCheckErrors();
 
 }
 
@@ -235,7 +235,7 @@ void buffer_to_device(TrajectoryBuffer* buffer){
     cudaMemcpy(buffer->d_terminated_p, buffer->h_terminated_p, buffer->capacity * sizeof(bool), cudaMemcpyHostToDevice);
     cudaMemcpy(buffer->d_truncated_p, buffer->h_truncated_p, buffer->capacity * sizeof(bool), cudaMemcpyHostToDevice);
 
-    //cudaCheckErrors()
+    cudaCheckErrors();
 
     buffer->action_p = buffer->d_action_p;
     buffer->state_p = buffer->d_state_p;
@@ -259,7 +259,7 @@ void buffer_to_host(TrajectoryBuffer* buffer){
     cudaMemcpy(buffer->h_terminated_p, buffer->d_terminated_p, buffer->capacity * sizeof(bool), cudaMemcpyDeviceToHost);
     cudaMemcpy(buffer->h_truncated_p, buffer->d_truncated_p, buffer->capacity * sizeof(bool), cudaMemcpyDeviceToHost);
 
-    //cudaCheckErrors()
+    cudaCheckErrors();
 
     buffer->action_p = buffer->h_action_p;
     buffer->state_p = buffer->h_state_p;

@@ -31,15 +31,15 @@ __global__ void ReLU_derivative_kernel(float* x, float* grad, int m,  int n) {
 void ReLU_cuda(float* x, int m, int n){
     ReLU_kernel<<<DIVUP(m * n, BLOCK_SIZE), BLOCK_SIZE>>>(x, m, n);
 
-    //cudaDeviceSynchronize();
-    //cudaCheckErrors()
+    
+    cudaCheckErrors();
 }
 
 void ReLU_derivative_cuda(float* x, float* grad, int m,  int n){
     ReLU_derivative_kernel<<<DIVUP(m * n, BLOCK_SIZE), BLOCK_SIZE>>>(x, grad, m, n);
 
-    //cudaDeviceSynchronize();
-    //cudaCheckErrors()
+    
+    cudaCheckErrors();
 }
 
 

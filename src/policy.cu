@@ -25,7 +25,7 @@ GaussianPolicy* create_gaussian_policy(int* layer_sizes, char** activation_funct
 
     cudaMemcpy(policy->d_log_std, policy->log_std, sizeof(float) * policy->action_size, cudaMemcpyHostToDevice);
 
-    //cudaCheckErrors()
+    cudaCheckErrors();
 
     return policy;
 }
@@ -134,8 +134,8 @@ void compute_log_prob_cuda(GaussianPolicy* policy, float* out, float* state, flo
 
     compute_log_prob_kernel<<<n_blocks, block_size>>>(policy->mu->d_output, policy->d_log_std, action, out, policy->action_size, m);
 
-    //cudaDeviceSynchronize();
-    //cudaCheckErrors()
+    
+    cudaCheckErrors();
 }
 
 __global__ void log_prob_backwards_kernel(
@@ -150,7 +150,6 @@ __global__ void log_prob_backwards_kernel(
     const float diff = input_action[index] - mu[index];
     const float exp_neg2_log_std = expf(-2.0f * log_std[j]);
 
-    // Direct computation for grad_mu (coalesced write)
     grad_mu[index] = diff * exp_neg2_log_std * grad_in[index];
 
     // Thread-safe accumulation for grad_log_std
@@ -166,8 +165,7 @@ void log_prob_backwards_cuda(GaussianPolicy* policy, float* grad_in, float* grad
 
     log_prob_backwards_kernel<<<grid_size, block_size>>>(grad_in, grad_mu, grad_log_std, policy->d_input_action, policy->mu->d_output, policy->d_log_std, policy->action_size, m);
 
-    //cudaDeviceSynchronize();
-    //cudaCheckErrors()
+    cudaCheckErrors();
 }
 
 float compute_entropy(GaussianPolicy* policy) {
@@ -184,7 +182,7 @@ float compute_entropy_cuda(GaussianPolicy* policy){
 
     cudaMemcpy(h_log_std, policy->d_log_std, sizeof(float) * policy->action_size, cudaMemcpyDeviceToHost);
 
-    //cudaCheckErrors()
+    cudaCheckErrors();
 
     float entropy = policy->action_size * 0.5 * (1 + log(2 * M_PI));
     for (int j = 0; j < policy->action_size; j++) {

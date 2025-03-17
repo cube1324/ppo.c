@@ -227,8 +227,8 @@ void mat_mul_backwards_cuda(cublasHandle_t handle, float* grad_x, float* grad_we
 
 //     mat_mul_backwards_kernel_grad_weight<<<grid_size, block_size>>>(grad_weight, grad_in, x, m, n, l);
 
-//     //cudaDeviceSynchronize();
-//     //cudaCheckErrors()
+//     
+//     cudaCheckErrors();
 // }
 
 // int main() {

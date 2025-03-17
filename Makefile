@@ -1,5 +1,7 @@
 CC = nvcc
 CFLAGS =  -O3 # -G -g #-O3
+DEBUG_FLAGS = -g -G -O0 -DDEBUG
+
 LDFLAGS = -lm -lpython3.10 -lopenblas -lcublas
 
 SRCDIR = src
@@ -19,6 +21,9 @@ EXECUTABLE = $(BINDIR)/ppo
 
 all: $(EXECUTABLE)
 
+debug:
+	$(MAKE) all CFLAGS="$(DEBUG_FLAGS)"
+
 $(EXECUTABLE): $(OBJECTS)
 	@mkdir -p $(BINDIR)
 	$(CC) $(CFLAGS) -I $(HEADERS) -I $(HEADERS_PYTHON) -L $(LINK_PYTHON) $(OBJECTS) -o $@ $(LDFLAGS)
@@ -34,4 +39,4 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.cu
 clean:
 	rm -rf $(OBJDIR) $(BINDIR)
 
-.PHONY: all clean
+.PHONY: all clean debug

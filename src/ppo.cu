@@ -155,8 +155,8 @@ float policy_loss_and_grad_cuda(float* grad_logprob, float* grad_entropy, float*
     float block_loss[BLOCK_SIZE];
     cudaMemcpy(block_loss, d_block_loss, sizeof(float) * n_blocks, cudaMemcpyDeviceToHost);
     
-    //cudaDeviceSynchronize();
-    //cudaCheckErrors()
+    
+    cudaCheckErrors();
 
     float loss = 0.0;
     for (int i = 0; i < n_blocks; i++) {
@@ -233,14 +233,6 @@ __global__ void normalize_advantage_kernel(float* advantage, float mean, float s
 void compute_gae_cuda(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float lambda){
     int limit = buffer->full ? buffer->capacity : buffer->idx;
 
-    // float v_next[limit];
-    // forward_propagation(V, buffer->next_state_p, limit);
-    // memcpy(v_next, V->output, limit * sizeof(float));
-
-    // float v[limit];
-    // forward_propagation(V, buffer->state_p, limit);
-    // memcpy(v, V->output, limit * sizeof(float));
-
     float* v_next;
     cudaMalloc(&v_next, limit * sizeof(float));
 
@@ -256,19 +248,17 @@ void compute_gae_cuda(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, f
     bool* terminated_temp;
     cudaMalloc(&terminated_temp, limit * sizeof(bool));
 
-    //cudaCheckErrors()
+    cudaCheckErrors();
 
     const int n_blocks = DIVUP(limit, BLOCK_SIZE);
 
     gae_compute_block_advantage_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, buffer->d_reward_p, v, v_next, buffer->d_terminated_p, buffer->d_truncated_p, terminated_temp, gamma, gamma * lambda, limit);
 
-    //cudaDeviceSynchronize();
-    //cudaCheckErrors()
+    cudaCheckErrors();
 
     gae_merge_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, terminated_temp, v, buffer->d_adv_target_p, gamma * lambda, limit);
 
-    //cudaDeviceSynchronize();
-    //cudaCheckErrors()
+    cudaCheckErrors();
 
     WelfordState block_states[n_blocks];
     WelfordState* d_block_states;
@@ -276,8 +266,7 @@ void compute_gae_cuda(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, f
 
     welford_var_kernel<<<n_blocks, BLOCK_SIZE, BLOCK_SIZE * sizeof(WelfordState)>>>(buffer->d_advantage_p, limit, d_block_states);
 
-    //cudaDeviceSynchronize();
-    //cudaCheckErrors()
+    cudaCheckErrors();
 
     cudaMemcpy(block_states, d_block_states, n_blocks * sizeof(WelfordState), cudaMemcpyDeviceToHost);
 
@@ -290,8 +279,7 @@ void compute_gae_cuda(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, f
 
     normalize_advantage_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, mean2, std2, limit);
 
-    //cudaDeviceSynchronize();
-    //cudaCheckErrors()
+    cudaCheckErrors();
 
     cudaFree(v);
     cudaFree(v_next);
@@ -396,8 +384,6 @@ void _train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, i
 
                 get_batch(ppo->buffer, k, batch_size, states, actions, logprobs_old, adv, adv_target);
 
-                // Compute policy loss
-                // SETS VALUES FOR GRAD COMPUTATION
                 compute_log_prob(ppo->policy, logprobs, states, actions, batch_size);
 
                 float entropy = compute_entropy(ppo->policy);
@@ -489,8 +475,6 @@ void _train_ppo_epoch_cuda(PPO* ppo, Env* env, int steps_per_epoch, int batch_si
 
                 get_batch_cuda(ppo->buffer, k, batch_size, states, actions, logprobs_old, adv, adv_target);
 
-                // Compute policy loss
-                // SETS VALUES FOR GRAD COMPUTATION
                 compute_log_prob_cuda(ppo->policy, logprobs, states, actions, batch_size);
 
                 float entropy = compute_entropy_cuda(ppo->policy);
@@ -500,10 +484,6 @@ void _train_ppo_epoch_cuda(PPO* ppo, Env* env, int steps_per_epoch, int batch_si
                 log_prob_backwards_cuda(ppo->policy, policy_loss_grad, mu_grad, ppo->policy->d_log_std_grad, batch_size);
 
                 backward_propagation_cuda(ppo->policy->mu, mu_grad, batch_size);
-
-                // for (int i = 0; i < ppo->policy->action_size; i++) {
-                //     ppo->policy->log_std_grad[i] += entropy_grad;
-                // }
 
                 adam_update_cuda(ppo->adam_entropy, ppo->lr_policy);
 

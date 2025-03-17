@@ -3,6 +3,8 @@
 #include <string.h>
 #include <time.h>
 
+#define DEBUG
+
 #include "ppo.h"
 #include "gym_env.h"
 #include "env.h"
