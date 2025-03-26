@@ -14,7 +14,6 @@ int main(int argc, char** argv) {
     // test_nn();
     int seed = time(NULL);
     srand(seed);
-    srand(time(NULL));
 
     openblas_set_num_threads(1);
 

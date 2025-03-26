@@ -127,10 +127,14 @@ void backward_propagation_cuda(NeuralNetwork* nn, float* grad_in, int m) {
 
     cudaMemcpy(nn->layers[nn->num_layers - 1].d_grad_x, grad_in, m * nn->output_size * sizeof(float), cudaMemcpyHostToDevice);
 
+    cudaCheckErrors();
+
     for (int i = nn->num_layers - 2; i >= 0; i--) {
 
         if (nn->cache_m_backward != m) {
             cudaFree(nn->layers[i].d_grad_x);
+            cudaCheckErrors();
+
             cudaMalloc(&nn->layers[i].d_grad_x, m * nn->layers[i].input_size * sizeof(float));
             cudaCheckErrors();
         }

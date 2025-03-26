@@ -36,7 +36,7 @@ void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float 
 
 float policy_loss_and_grad(float* grad_logprob, float* grad_entropy, float* adv, float* logprobs,  float* old_logprobs, float entropy, float ent_coeff, float epsilon, int m);
 
-void compute_gae_cuda(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float lambda);
+void compute_gae_cuda(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float lambda, int horizon);
 float policy_loss_and_grad_cuda(float* grad_logprob, float* grad_entropy, float* adv, float* logprobs,  float* old_logprobs, float entropy, float ent_coeff, float epsilon, int m);
 
 void train_ppo_epoch(PPO* ppo, Env* env, int steps_per_epoch, int batch_size, int n_epochs_policy, int n_epochs_value);

@@ -13,7 +13,7 @@ PPO* create_ppo(char** activation_functions, int* layer_sizes, int num_layers, i
     memcpy(layer_sizes_v, layer_sizes, (num_layers - 1) * sizeof(int));
     layer_sizes_v[num_layers - 1] = 1;
     
-    ppo->V = create_neural_network(layer_sizes, activation_functions, num_layers);
+    ppo->V = create_neural_network(layer_sizes_v, activation_functions, num_layers);
 
     if (use_cuda){
         ppo->adam_policy = create_adam_from_nn_cuda(ppo->policy->mu, 0.9, 0.999);
@@ -205,20 +205,42 @@ __global__ void gae_compute_block_advantage_kernel(float* advantage, float* rewa
     terminated_out[idx] = shared_terminated[tid];
 }
 
-__global__ void gae_merge_kernel(float* advantage, bool* terminated, float* v, float* adv_target, float alpha, int n){
+__global__ void gae_merge_kernel(float* advantage_out, float* advantage, bool* terminated, float* v, float* adv_target, float alpha, int num_blocks, int n){
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < n) {
+        advantage_out[idx] = advantage[idx];
+    }
 
     int first_el_next_block = (blockIdx.x + 1) * blockDim.x;
 
+    bool term = terminated[idx];
+
     if (first_el_next_block < n) {
-        if (!terminated[idx]) {
-            // TODO This breaks if episode is longer than block size, for now assume this doesent happen
-            advantage[idx] += powf(alpha, blockDim.x - threadIdx.x) * advantage[first_el_next_block];
+        if (!term) {
+            advantage_out[idx] += powf(alpha, blockDim.x - threadIdx.x) * advantage[first_el_next_block];
+        }
+    }
+
+    for (int i = 1; i < num_blocks; i++){
+        int first_el_ith_block = (blockIdx.x + i) * blockDim.x;
+
+        int first_el_ith_next_block = (blockIdx.x + i + 1) * blockDim.x;
+
+
+
+
+        if (first_el_ith_next_block < n) {
+            term = term && terminated[first_el_ith_block]; 
+            if (!term) {
+                // TODO This breaks if episode is longer than block size, for now assume this doesent happen
+                advantage_out[idx] += powf(alpha, (i + 1) * blockDim.x - threadIdx.x) * advantage[first_el_ith_next_block];
+            }
         }
     }
 
     if (idx < n) {
-        adv_target[idx] = v[idx] + advantage[idx];
+        adv_target[idx] = v[idx] + advantage_out[idx];
     }
 }
 
@@ -230,7 +252,7 @@ __global__ void normalize_advantage_kernel(float* advantage, float mean, float s
     }
 }
 
-void compute_gae_cuda(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float lambda){
+void compute_gae_cuda(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float lambda, int horizon){
     int limit = buffer->full ? buffer->capacity : buffer->idx;
 
     float* v_next;
@@ -248,15 +270,37 @@ void compute_gae_cuda(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, f
     bool* terminated_temp;
     cudaMalloc(&terminated_temp, limit * sizeof(bool));
 
+    float* block_advantage;
+    cudaMalloc(&block_advantage, limit * sizeof(float));
+
     cudaCheckErrors();
 
     const int n_blocks = DIVUP(limit, BLOCK_SIZE);
 
-    gae_compute_block_advantage_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, buffer->d_reward_p, v, v_next, buffer->d_terminated_p, buffer->d_truncated_p, terminated_temp, gamma, gamma * lambda, limit);
+    gae_compute_block_advantage_kernel<<<n_blocks, BLOCK_SIZE>>>(block_advantage, buffer->d_reward_p, v, v_next, buffer->d_terminated_p, buffer->d_truncated_p, terminated_temp, gamma, gamma * lambda, limit);
 
+    bool terminated_temp_host[limit];
+    cudaMemcpy(terminated_temp_host, terminated_temp, limit * sizeof(bool), cudaMemcpyDeviceToHost);
+
+    float block_advantage_host[limit];
+    cudaMemcpy(block_advantage_host, block_advantage, limit * sizeof(float), cudaMemcpyDeviceToHost);
+
+    // for (int i = 0; i < limit; i++) {
+    //     printf("Block advantage at index %d: %f\n", i, block_advantage_host[i]);
+    // }
     cudaCheckErrors();
 
-    gae_merge_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, terminated_temp, v, buffer->d_adv_target_p, gamma * lambda, limit);
+    int num_blocks = horizon / BLOCK_SIZE;
+
+    gae_merge_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, block_advantage, terminated_temp, v, buffer->d_adv_target_p, gamma * lambda, num_blocks, limit);
+
+    float temp_adv_cuda[limit];
+    cudaMemcpy(temp_adv_cuda, buffer->d_advantage_p, limit * sizeof(float), cudaMemcpyDeviceToHost);
+
+    // for (int i = 0; i < limit; i++) {
+    //     printf("Advantage at index %d: %f\n", i, temp_adv_cuda[i]);
+    // }
+
 
     cudaCheckErrors();
 
@@ -321,8 +365,11 @@ void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float 
     float std = 0;
     for (int i = 0; i < limit; i++) {
         std += pow(*buffer->advantage(buffer, i) - mean, 2);
+        printf("Advantage at index %d: %f\n", i, *buffer->advantage(buffer, i));
     }
     std = sqrt(std / limit);
+
+    printf("Mean: %f Std: %f\n", mean, std);
 
     for (int i = 0; i < limit; i++) {
         *buffer->advantage(buffer, i) = (*buffer->advantage(buffer, i) - mean) / (std + 1e-8);
@@ -442,9 +489,27 @@ void _train_ppo_epoch_cuda(PPO* ppo, Env* env, int steps_per_epoch, int batch_si
 
         collect_trajectories(ppo->buffer, env, ppo->policy, ppo->buffer->capacity);
 
+        compute_gae(ppo->V, ppo->buffer, env->gamma, ppo->lambda);
+
+        float temp_adv[ppo->buffer->capacity];
+        memcpy(temp_adv, ppo->buffer->advantage_p, ppo->buffer->capacity * sizeof(float));
+
+        // for (int i = 0; i < ppo->buffer->capacity; i++) {
+        //     printf("Temp advantage at index %d: %f\n", i, temp_adv[i]);
+        // }
+
         buffer_to_device(ppo->buffer);
         // Compute advantages
-        compute_gae_cuda(ppo->V, ppo->buffer, env->gamma, ppo->lambda);
+        compute_gae_cuda(ppo->V, ppo->buffer, env->gamma, ppo->lambda, env->horizon);
+
+        float temp_adv_cuda[ppo->buffer->capacity];
+        cudaMemcpy(temp_adv_cuda, ppo->buffer->d_advantage_p, ppo->buffer->capacity * sizeof(float), cudaMemcpyDeviceToHost);
+
+        for (int i = 0; i < ppo->buffer->capacity; i++) {
+            if (fabs(temp_adv[i] - temp_adv_cuda[i]) > 1e-2) {
+                printf("Advantage mismatch at index %d: CPU %f, GPU %f\n", i, temp_adv[i], temp_adv_cuda[i]);
+            }
+        }
 
         float sum_v_loss = 0;
         for (int j = 0; j < n_epochs_value; j++) {
@@ -494,6 +559,7 @@ void _train_ppo_epoch_cuda(PPO* ppo, Env* env, int steps_per_epoch, int batch_si
         // printf("Iteration %d V loss: %f Entropy: %f\n", i, sum_v_loss / (n_epochs_value * num_batches_value),  compute_entropy(ppo->policy));
         buffer_to_host(ppo->buffer);
         policy_to_host(ppo->policy);
+        nn_write_weights_to_host(ppo->V);
     }
 
     cudaFree(states);
