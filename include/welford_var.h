@@ -23,7 +23,7 @@ __global__ void welford_var_kernel(float *data, int n, WelfordState *state_out) 
     } else {
         sharedData[tid].mean = 0.0f;
         sharedData[tid].m2 = 0.0f;
-        sharedData[tid].n = 0;
+        sharedData[tid].n = 1;
     }
 
     for (int s = blockDim.x / 2; s > 0; s >>= 1) {
