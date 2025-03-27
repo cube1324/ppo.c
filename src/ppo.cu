@@ -231,7 +231,7 @@ __global__ void gae_merge_kernel(float* advantage_out, float* advantage, bool* t
 
 
         if (first_el_ith_next_block < n) {
-            term = term && terminated[first_el_ith_block]; 
+            term = term || terminated[first_el_ith_block]; 
             if (!term) {
                 // TODO This breaks if episode is longer than block size, for now assume this doesent happen
                 advantage_out[idx] += powf(alpha, (i + 1) * blockDim.x - threadIdx.x) * advantage[first_el_ith_next_block];
@@ -365,11 +365,11 @@ void compute_gae(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, float 
     float std = 0;
     for (int i = 0; i < limit; i++) {
         std += pow(*buffer->advantage(buffer, i) - mean, 2);
-        printf("Advantage at index %d: %f\n", i, *buffer->advantage(buffer, i));
+        // printf("Advantage at index %d: %f\n", i, *buffer->advantage(buffer, i));
     }
     std = sqrt(std / limit);
 
-    printf("Mean: %f Std: %f\n", mean, std);
+    // printf("Mean: %f Std: %f\n", mean, std);
 
     for (int i = 0; i < limit; i++) {
         *buffer->advantage(buffer, i) = (*buffer->advantage(buffer, i) - mean) / (std + 1e-8);
@@ -505,11 +505,11 @@ void _train_ppo_epoch_cuda(PPO* ppo, Env* env, int steps_per_epoch, int batch_si
         float temp_adv_cuda[ppo->buffer->capacity];
         cudaMemcpy(temp_adv_cuda, ppo->buffer->d_advantage_p, ppo->buffer->capacity * sizeof(float), cudaMemcpyDeviceToHost);
 
-        for (int i = 0; i < ppo->buffer->capacity; i++) {
-            if (fabs(temp_adv[i] - temp_adv_cuda[i]) > 1e-2) {
-                printf("Advantage mismatch at index %d: CPU %f, GPU %f\n", i, temp_adv[i], temp_adv_cuda[i]);
-            }
-        }
+        // for (int i = 0; i < ppo->buffer->capacity; i++) {
+        //     if (fabs(temp_adv[i] - temp_adv_cuda[i]) > 1e-2) {
+        //         printf("Advantage mismatch at index %d: CPU %f, GPU %f\n", i, temp_adv[i], temp_adv_cuda[i]);
+        //     }
+        // }
 
         float sum_v_loss = 0;
         for (int j = 0; j < n_epochs_value; j++) {
