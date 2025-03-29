@@ -20,4 +20,4 @@
 
 #define DIVUP(x, y) (((x) + (y) - 1) / (y))
 
-#define BLOCK_SIZE 64
+#define BLOCK_SIZE 512

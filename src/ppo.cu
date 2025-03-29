@@ -169,8 +169,8 @@ float policy_loss_and_grad_cuda(float* grad_logprob, float* grad_entropy, float*
 }
 
 __global__ void gae_compute_block_advantage_kernel(float* advantage, float* reward, float* v, float* v_next, bool* terminated, bool* truncated, bool* terminated_out, float gamma, float alpha, int n) {
-    __shared__ float shared_sum[BLOCK_SIZE];
-    __shared__ bool shared_terminated[BLOCK_SIZE];
+    volatile __shared__ float shared_sum[BLOCK_SIZE];
+    volatile __shared__ bool shared_terminated[BLOCK_SIZE];
 
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int tid = threadIdx.x;
@@ -187,22 +187,29 @@ __global__ void gae_compute_block_advantage_kernel(float* advantage, float* rewa
 
     // TODO omptimize presum https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda
 
+    float alpha_pow = alpha;
     for (int stride = 1; stride < blockDim.x; stride *= 2) {
         float temp = 0.0f;
+        bool temp_terminated = shared_terminated[tid];
 
-        if (tid + stride < blockDim.x && !shared_terminated[tid]) {
-            shared_terminated[tid] = shared_terminated[tid + stride];
-            temp = powf(alpha, stride) * shared_sum[tid + stride];
+        if (tid + stride < blockDim.x && !temp_terminated) {
+            temp_terminated = shared_terminated[tid + stride];
+            temp = alpha_pow * shared_sum[tid + stride];
         }
         __syncthreads();
-        
+
         shared_sum[tid] += temp;
-        
+        shared_terminated[tid] = temp_terminated;
+
         __syncthreads();
+
+        alpha_pow *= alpha_pow;
     }
 
-    advantage[idx] = shared_sum[tid];
-    terminated_out[idx] = shared_terminated[tid];
+    if (idx < n){
+        advantage[idx] = shared_sum[tid];
+        terminated_out[idx] = shared_terminated[tid];
+    }
 }
 
 __global__ void gae_merge_kernel(float* advantage_out, float* advantage, bool* terminated, float* v, float* adv_target, float alpha, int num_blocks, int n){
@@ -233,7 +240,6 @@ __global__ void gae_merge_kernel(float* advantage_out, float* advantage, bool* t
         if (first_el_ith_next_block < n) {
             term = term || terminated[first_el_ith_block]; 
             if (!term) {
-                // TODO This breaks if episode is longer than block size, for now assume this doesent happen
                 advantage_out[idx] += powf(alpha, (i + 1) * blockDim.x - threadIdx.x) * advantage[first_el_ith_next_block];
             }
         }
@@ -279,27 +285,13 @@ void compute_gae_cuda(NeuralNetwork* V, TrajectoryBuffer* buffer, float gamma, f
 
     gae_compute_block_advantage_kernel<<<n_blocks, BLOCK_SIZE>>>(block_advantage, buffer->d_reward_p, v, v_next, buffer->d_terminated_p, buffer->d_truncated_p, terminated_temp, gamma, gamma * lambda, limit);
 
-    bool terminated_temp_host[limit];
-    cudaMemcpy(terminated_temp_host, terminated_temp, limit * sizeof(bool), cudaMemcpyDeviceToHost);
-
-    float block_advantage_host[limit];
-    cudaMemcpy(block_advantage_host, block_advantage, limit * sizeof(float), cudaMemcpyDeviceToHost);
-
-    // for (int i = 0; i < limit; i++) {
-    //     printf("Block advantage at index %d: %f\n", i, block_advantage_host[i]);
-    // }
     cudaCheckErrors();
+
 
     int num_blocks = horizon / BLOCK_SIZE;
 
     gae_merge_kernel<<<n_blocks, BLOCK_SIZE>>>(buffer->d_advantage_p, block_advantage, terminated_temp, v, buffer->d_adv_target_p, gamma * lambda, num_blocks, limit);
 
-    float temp_adv_cuda[limit];
-    cudaMemcpy(temp_adv_cuda, buffer->d_advantage_p, limit * sizeof(float), cudaMemcpyDeviceToHost);
-
-    // for (int i = 0; i < limit; i++) {
-    //     printf("Advantage at index %d: %f\n", i, temp_adv_cuda[i]);
-    // }
 
 
     cudaCheckErrors();
@@ -489,27 +481,11 @@ void _train_ppo_epoch_cuda(PPO* ppo, Env* env, int steps_per_epoch, int batch_si
 
         collect_trajectories(ppo->buffer, env, ppo->policy, ppo->buffer->capacity);
 
-        compute_gae(ppo->V, ppo->buffer, env->gamma, ppo->lambda);
-
-        float temp_adv[ppo->buffer->capacity];
-        memcpy(temp_adv, ppo->buffer->advantage_p, ppo->buffer->capacity * sizeof(float));
-
-        // for (int i = 0; i < ppo->buffer->capacity; i++) {
-        //     printf("Temp advantage at index %d: %f\n", i, temp_adv[i]);
-        // }
 
         buffer_to_device(ppo->buffer);
         // Compute advantages
         compute_gae_cuda(ppo->V, ppo->buffer, env->gamma, ppo->lambda, env->horizon);
 
-        float temp_adv_cuda[ppo->buffer->capacity];
-        cudaMemcpy(temp_adv_cuda, ppo->buffer->d_advantage_p, ppo->buffer->capacity * sizeof(float), cudaMemcpyDeviceToHost);
-
-        // for (int i = 0; i < ppo->buffer->capacity; i++) {
-        //     if (fabs(temp_adv[i] - temp_adv_cuda[i]) > 1e-2) {
-        //         printf("Advantage mismatch at index %d: CPU %f, GPU %f\n", i, temp_adv[i], temp_adv_cuda[i]);
-        //     }
-        // }
 
         float sum_v_loss = 0;
         for (int j = 0; j < n_epochs_value; j++) {

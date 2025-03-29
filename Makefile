@@ -1,5 +1,5 @@
 CC = nvcc
-CFLAGS =  -O3 # -G -g #-O3
+CFLAGS = -O3 #-Xptxas -O0
 DEBUG_FLAGS = -g -G -O0 -DDEBUG
 
 LDFLAGS = -lm -lpython3.10 -lopenblas -lcublas

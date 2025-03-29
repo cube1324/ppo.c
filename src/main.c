@@ -45,14 +45,14 @@ int main(int argc, char** argv) {
 
     PPO* ppo = create_ppo(activation_functions, layer_sizes, num_layers, steps_per_fit, lr, lr, lambda, epsilon, ent_coeff, init_std, use_cuda);
 
-    eval_ppo(ppo, env, 3000);
+    eval_ppo(ppo, env, steps_per_fit);
 
     for (int i = 0; i < n_epochs; i++) {
         clock_t tic = clock();
         train_ppo_epoch(ppo, env, steps_per_epoch, batch_size, n_epochs_policy, n_epochs_value);
         clock_t toc = clock();
         printf("Epoch: %d Entropy: %f Time %fs ", i, compute_entropy(ppo->policy), (double)(toc - tic) / CLOCKS_PER_SEC);
-        eval_ppo(ppo, env, 3000);
+        eval_ppo(ppo, env, steps_per_fit);
     }
 
     save_ppo(ppo, "ppo_model.bin");
